@@ -28,8 +28,10 @@ const uploadDoc = multer({
   },
 });
 
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads');
+
 function ensureDir(sub) {
-  const dir = path.join(__dirname, '..', 'uploads', sub);
+  const dir = path.join(UPLOADS_DIR, sub);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   return dir;
 }

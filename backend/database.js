@@ -2,7 +2,7 @@ const { DatabaseSync } = require('node:sqlite');
 const bcrypt = require('bcryptjs');
 const path = require('path');
 
-const db = new DatabaseSync(path.join(__dirname, 'scorecard.db'));
+const db = new DatabaseSync(process.env.SQLITE_PATH || path.join(__dirname, 'scorecard.db'));
 
 db.exec(`
   PRAGMA foreign_keys = ON;
