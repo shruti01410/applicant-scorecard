@@ -1,0 +1,14 @@
+{
+  "name": "applicant-scorecard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Applicant Scorecard — Express API + React/Vite frontend (monorepo)",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "install:all": "npm --prefix frontend install && npm --prefix backend install",
+    "build": "npm --prefix frontend install && npm --prefix frontend run build && npm --prefix backend install",
+    "start": "node backend/server.js"
+  }
+}

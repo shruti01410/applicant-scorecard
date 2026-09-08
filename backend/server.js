@@ -1,5 +1,7 @@
 const express = require('express');
 const cors    = require('cors');
+const path    = require('path');
+const fs      = require('fs');
 require('./database'); // initialise & seed DB on startup
 
 const app = express();
@@ -11,6 +13,14 @@ app.use('/api/admin',    require('./routes/admin'));
 app.use('/api/admin',    require('./routes/numerology'));
 app.use('/api/admin',    require('./routes/candidateAnalyze'));
 app.use('/api/employee', require('./routes/employee'));
+
+const distDir = path.join(__dirname, '..', 'frontend', 'dist');
+if (fs.existsSync(distDir)) {
+  app.use(express.static(distDir));
+  app.get(/^(?!\/api(?:\/|$)).*/, (req, res) => {
+    res.sendFile(path.join(distDir, 'index.html'));
+  });
+}
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
