@@ -851,7 +851,7 @@ function adjustConfidence(ent, context) {
 // Experience extraction (regex-based structural signals).
 // ---------------------------------------------------------------
 
-const EXPERIENCE_RE = /(\d{1,2})\s*[-+]\s*(\d{1,2})\s*(?:years?|yrs)|(\d{1,2})\s*\+?\s*(?:years?|yrs|yr)/g;
+const EXPERIENCE_RE = /(\d{1,2})\s*(?:[-+]|\bto\b)\s*(\d{1,2})\s*(?:years?|yrs)|(\d{1,2})\s*\+?\s*(?:years?|yrs|yr)/g;
 
 function extractExperience(normText, sectionMode = 'required') {
   const out = [];
@@ -859,12 +859,20 @@ function extractExperience(normText, sectionMode = 'required') {
   let m;
   while ((m = EXPERIENCE_RE.exec(normText)) !== null && out.length < 6) {
     let display = null;
-    if (m[1] && m[2]) display = `${m[1]}-${m[2]} years`;
-    else if (m[3]) display = `${m[3]}+ years`;
-    else if (/fresh/i.test(normText.slice(Math.max(0, EXPERIENCE_RE.lastIndex - 12), EXPERIENCE_RE.lastIndex + 12))) display = 'Fresher';
-    if (display && !seen.has(display)) {
+    let years = null;
+    if (m[1] && m[2]) {
+      display = `${m[1]}-${m[2]} years`;
+      years = { min: parseInt(m[1], 10), max: parseInt(m[2], 10) };
+    } else if (m[3]) {
+      display = `${m[3]}+ years`;
+      years = { min: parseInt(m[3], 10), max: Infinity };
+    } else if (/fresh/i.test(normText.slice(Math.max(0, EXPERIENCE_RE.lastIndex - 12), EXPERIENCE_RE.lastIndex + 12))) {
+      display = 'Fresher';
+      years = { min: 0, max: 0 };
+    }
+    if (display && years && !seen.has(display)) {
       seen.add(display);
-      out.push({ term: display, display, category: 'experience', confidence: 0.9, raw: m[0], mode: sectionMode });
+      out.push({ term: display, display, category: 'experience', confidence: 0.9, raw: m[0], mode: sectionMode, years });
     }
   }
   return out;
@@ -1034,8 +1042,30 @@ function matchResumeToJD(jdText, resumeText) {
   const jdPreferred = extractStructured(jdText, { jd: true }).filter((e) => e.mode === 'preferred');
   const resumeProfile = extractCandidateProfile(resumeText);
 
-  const isMatched = (re) => resumeProfile.has(re.term);
-  const displayByName = (name) => resumeProfile.get(name) ? resumeProfile.get(name).display : name;
+  // Years a candidate can be credited with: a bounded "A-B years" claim counts its
+  // upper bound, while a "N+ years"/"N years"/Fresher claim counts its lower bound.
+  const claimedYears = (e) => {
+    if (!e.years) return 0;
+    return Number.isFinite(e.years.max) ? e.years.max : e.years.min;
+  };
+  const resumeExps = [...resumeProfile.values()].filter((e) => e.category === 'experience');
+  const resumeMaxYears = resumeExps.reduce((mx, e) => Math.max(mx, claimedYears(e)), 0);
+  const resumeExpEntity = resumeExps.length ? resumeExps.reduce((a, b) => (claimedYears(b) >= claimedYears(a) ? b : a)) : null;
+
+  const isMatched = (re) => {
+    if (re.category === 'experience' && re.years) {
+      if (re.years.min <= 0) return true;
+      return resumeMaxYears >= re.years.min;
+    }
+    return resumeProfile.has(re.term);
+  };
+  const resumeMatchFor = (re) => {
+    if (re.category === 'experience' && re.years) {
+      return resumeExpEntity ? resumeExpEntity.display : null;
+    }
+    return resumeProfile.has(re.term) ? resumeProfile.get(re.term).display : null;
+  };
+  const matchStatus = (re) => (isMatched(re) ? 'match' : 'missing');
 
   const matched = [];
   const missing = [];
@@ -1057,9 +1087,9 @@ function matchResumeToJD(jdText, resumeText) {
       name: re.display,
       category: re.category,
       mode: re.mode,
-      status: isMatched(re) ? 'match' : 'missing',
+      status: matchStatus(re),
       confidence: re.confidence,
-      resumeMatch: isMatched(re) ? resumeProfile.get(re.term).display : null,
+      resumeMatch: resumeMatchFor(re),
     });
   }
 
@@ -1077,9 +1107,9 @@ function matchResumeToJD(jdText, resumeText) {
       name: re.display,
       category: re.category,
       mode: re.mode,
-      status: isMatched(re) ? 'match' : 'missing',
+      status: matchStatus(re),
       confidence: re.confidence,
-      resumeMatch: isMatched(re) ? resumeProfile.get(re.term).display : null,
+      resumeMatch: resumeMatchFor(re),
     });
   }
 
