@@ -49,6 +49,7 @@ function computeAndStoreProfile(employeeId, isoDob, numerologyName) {
   const birth = numer.birthNumber(isoDob);
   const expression = numer.nameNumber(fullName, { keepMaster: true });
   const archetype = archetypeFor(lifePath);
+  const archetypeNumber = archetype ? archetype.number : (lifePath === 33 ? 33 : lifePath);
   db.prepare(`
     INSERT INTO numerology_profiles
       (employee_id, dimension, date_of_birth, life_path_number, birth_number, expression_number, full_name, numerology_name, archetype_number, narrative_snapshot, updated_at)
@@ -62,7 +63,7 @@ function computeAndStoreProfile(employeeId, isoDob, numerologyName) {
       numerology_name = excluded.numerology_name,
       archetype_number = excluded.archetype_number,
       updated_at = datetime('now')
-  `).run(employeeId, 'candidate', isoDob, lifePath, birth, expression, fullName, fullName, archetype ? archetype.number : null);
+  `).run(employeeId, 'candidate', isoDob, lifePath, birth, expression, fullName, fullName, archetypeNumber);
   return getProfile(employeeId);
 }
 

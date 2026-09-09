@@ -227,9 +227,18 @@ if (archCount.count === 0) {
     [9, 'The Namer',         'Sees the whole, wraps things up and shares what was learned.',    '["Big-picture", "Community", "Closure"]'],
     [11, 'The Seer',         'Brings vision and insight, translating ideas into inspiration.', '["Vision", "Ideas", "Inspiration"]'],
     [22, 'The Architect',    'Turns vision into a buildable, long-lasting structure.',         '["Construction", "Scale", "Legacy"]'],
+    [33, 'The Master Teacher', 'Shares what it has mastered and lifts others with it.',       '["Teaching", "Guidance", "Service"]'],
   ];
   archetypes.forEach(a => insertArch.run(...a));
 }
+
+// A life path can be master 33 (kept by lifePathNumber) — make sure the archetype exists
+// even on databases that were seeded before 33 was added.
+try {
+  db.prepare('INSERT OR IGNORE INTO numerology_archetypes (number, name, summary, tags) VALUES (?, ?, ?, ?)').run(
+    33, 'The Master Teacher', 'Shares what it has mastered and lifts others with it.', '["Teaching", "Guidance", "Service"]'
+  );
+} catch (e) {}
 
 // ---- Seed users ----
 const userCount = db.prepare('SELECT COUNT(*) AS count FROM users').get();
