@@ -25,7 +25,9 @@ backend/
   server.js              Express entrypoint; mounts /api/auth, /api/admin, /api/employee
   database.js            SQLite schema + seeds (23 params, users, numerology tables); exports db, makeUsername()
   scoreUtils.js          weightedPct() (Σ score/5 × weightage) and loadScorecard()
+  jdValidation.js        Strict JD upload validation + content-fingerprint (SHA-256) dedupe service
   numerologyUtils.js     Pure numerology math + PERSONAL_YEAR_THEMES map (no DB access)
+  tests/                 jdValidation.test.js — 12-case JD validation/dedupe suite (`npm test`)
   routes/
     auth.js              POST /login -> { token, user }
     admin.js             parameters, employees, employees/:id/scorecard, upload-excel (role=admin)
@@ -65,8 +67,9 @@ Run from the repo root `C:\Users\Shruti\OneDrive\Desktop\office\score with astro
 | Install frontend deps | `npm install` (workdir: `frontend`) |
 | Run frontend (dev) | `npm run dev` (workdir: `frontend`) — serves :3000 |
 | Build frontend | `npm run build` (workdir: `frontend`) |
+| Run backend tests | `npm test` (workdir: `backend`) — JD validation suite in `backend/tests/jdValidation.test.js` |
 
-There is **no test suite** and **no linter/typecheck** configured. Build verification is done
+The backend has a **JD validation test suite** (`npm test` → `node --test`); there is **no linter/typecheck** configured. Frontend build verification is done
 with `npm run build` in `frontend/`; backend behavior is verified by starting the server
 (`node server.js`) and hitting the API (e.g. with `Invoke-RestMethod`).
 
@@ -84,6 +87,10 @@ with `npm run build` in `frontend/`; backend behavior is verified by starting th
 - **Weighted score**: `Σ(score/5 × weightage)`, rounded to an integer percentage.
   Weights sum to **100**, so the result is 0–100. Per-parameter weighted contribution is
   `Math.round(score/5 × weightage × 10)/10`.
+- **JD duplicate prevention**: content-fingerprinted with SHA-256 of normalized text
+  (`jd_hash`, UNIQUE partial index); `validateAndResolveJD` in `jdValidation.js` is the one
+  service shared by JD Creation and Add Candidate. Never filename-based. Exact duplicates
+  return 409 `{duplicate, existingJdId}`; pasted blank/resume/gibberish text is rejected at upload.
 - **Badge thresholds** (see `scoreLabels.js`): ≥80 Excellent (green), ≥60 Good (blue),
   ≥40 Average (amber), <40 Needs Improvement (red).
 - **Scoring params**: **23 parameters** seeded server-side with weights summing to 100.

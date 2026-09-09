@@ -99,6 +99,7 @@ db.exec(`
     file_path TEXT,
     is_favorite INTEGER NOT NULL DEFAULT 0,
     is_archived INTEGER NOT NULL DEFAULT 0,
+    jd_hash TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -151,7 +152,49 @@ try {
   if (!jdCols.includes('company_id')) db.exec(`ALTER TABLE job_descriptions ADD COLUMN company_id INTEGER REFERENCES company_numerology_profiles(id)`);
   if (!jdCols.includes('is_favorite')) db.exec(`ALTER TABLE job_descriptions ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0`);
   if (!jdCols.includes('is_archived')) db.exec(`ALTER TABLE job_descriptions ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0`);
+  if (!jdCols.includes('jd_hash')) db.exec(`ALTER TABLE job_descriptions ADD COLUMN jd_hash TEXT`);
 } catch (e) {}
+
+// ---- JD content fingerprint (jd_hash) migration ----
+// Backfills hashes from normalized description_text, merges existing exact
+// duplicates onto their canonical (lowest-id) JD, repoints employee links,
+// then enforces uniqueness with a UNIQUE index. Never touches filenames.
+try {
+  const { hashJD } = require('./jdValidation');
+  const needsHash = db.prepare("SELECT id, description_text FROM job_descriptions WHERE jd_hash IS NULL OR jd_hash = ''").all();
+  const updHash = db.prepare('UPDATE job_descriptions SET jd_hash = ? WHERE id = ?');
+  for (const jd of needsHash) {
+    updHash.run(hashJD(jd.description_text), jd.id);
+  }
+
+  db.exec('BEGIN');
+  try {
+    const dups = db.prepare(
+      "SELECT jd_hash, COUNT(*) AS c, MIN(id) AS keep_id FROM job_descriptions WHERE jd_hash IS NOT NULL AND jd_hash != '' GROUP BY jd_hash HAVING c > 1"
+    ).all();
+    let removed = 0;
+    let repointed = 0;
+    for (const d of dups) {
+      const dupRows = db.prepare('SELECT id FROM job_descriptions WHERE jd_hash = ? AND id != ? ORDER BY id').all(d.jd_hash, d.keep_id);
+      for (const r of dupRows) {
+        const up = db.prepare('UPDATE users SET job_description_id = ? WHERE job_description_id = ?').run(d.keep_id, r.id);
+        repointed += up.changes;
+        db.prepare('DELETE FROM jd_keywords WHERE jd_id = ?').run(r.id);
+        db.prepare('DELETE FROM job_descriptions WHERE id = ?').run(r.id);
+        removed++;
+      }
+    }
+    db.exec('COMMIT');
+    if (removed > 0) console.log(`[jd_hash] merged ${removed} duplicate JD(s), repointed ${repointed} employee link(s)`);
+  } catch (e) {
+    try { db.exec('ROLLBACK'); } catch (ignored) {}
+    console.error('[jd_hash] dedupe failed:', e.message);
+  }
+
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_jd_hash ON job_descriptions(jd_hash) WHERE jd_hash IS NOT NULL");
+} catch (e) {
+  console.error('[jd_hash] migration failed:', e.message);
+}
 
 try {
   const suCols = db.prepare(`PRAGMA table_info(scorecard_updates)`).all().map(r => r.name);

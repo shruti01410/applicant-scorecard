@@ -64,7 +64,14 @@ export default function JobDescriptions() {
       setOpen(false);
       form.resetFields();
       fetchRows();
-    } catch (e) { message.error(e.message); }
+    } catch (e) {
+      if (e.body && e.body.duplicate) {
+        message.warning(e.body.message || 'This JD already exists — opening the existing one.');
+        setOpen(false);
+        form.resetFields();
+        openView(Number(e.body.existingJdId));
+      } else { message.error(e.message); }
+    }
   }
 
   async function openView(id) {
@@ -128,7 +135,11 @@ export default function JobDescriptions() {
       setDescDraft(data.description_text);
       message.success('JD text saved — newly extracted keywords were added to the set');
       fetchRows();
-    } catch (e) { message.error(e.message); } finally { setBusy(false); }
+    } catch (e) {
+      if (e.body && e.body.duplicate) {
+        message.warning(e.body.message || 'A JD with this exact text already exists.');
+      } else { message.error(e.message); }
+    } finally { setBusy(false); }
   }
 
   async function toggleFavorite(r) {

@@ -9,6 +9,7 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const { weightedPct, loadScorecard } = require('../scoreUtils');
 const { extractText } = require('../fileTextExtract');
 const { extractKeywords, matchResumeToJD } = require('../capabilityMatch');
+const jdValidation = require('../jdValidation');
 const { autoRateParameters } = require('../autoRate');
 const { detectResumeFlags } = require('../resumeFlags');
 const numer = require('../numerologyUtils');
@@ -329,6 +330,7 @@ router.post('/job-descriptions', uploadDoc.single('file'), async (req, res) => {
   try {
     let title = String(req.body.title || '').trim();
     let client = String(req.body.client || '').trim();
+    const hasPasted = typeof req.body.description_text === 'string' && String(req.body.description_text).length > 0;
     let description_text = String(req.body.description_text || '').trim();
     let company_id = req.body.company_id ? Number(req.body.company_id) : null;
     let file_path = null;
@@ -340,14 +342,28 @@ router.post('/job-descriptions', uploadDoc.single('file'), async (req, res) => {
       if (!title) title = path.parse(req.file.originalname).name;
     }
 
-    if (!title || !description_text) return res.status(400).json({ error: 'title and description_text (or file) are required' });
+    if (!title) return res.status(400).json({ error: 'title is required' });
+    if (!req.file && !hasPasted) return res.status(400).json({ error: 'title and description_text (or file) are required' });
 
-    const requirements = extractKeywords(description_text);
-    const info = db.prepare(
-      'INSERT INTO job_descriptions (title, client, company_id, description_text, requirements, file_path) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(title, client || null, company_id, description_text, JSON.stringify(requirements), file_path);
-    syncJDKeywordsFromText(info.lastInsertRowid, description_text);
-    const row = db.prepare('SELECT * FROM job_descriptions WHERE id = ?').get(info.lastInsertRowid);
+    const resolved = await jdValidation.validateAndResolveJD({ descriptionText: description_text, title, client }, { db });
+    if (resolved.status === 'invalid') return res.status(400).json({ error: resolved.error });
+    if (resolved.status === 'duplicate') {
+      return res.status(409).json({ duplicate: true, existingJdId: resolved.jd.id, message: jdValidation.ERROR_MESSAGES.duplicate });
+    }
+
+    const insert = jdValidation.insertJD(db, {
+      title: title,
+      client: client || null,
+      company_id,
+      description_text: resolved.text,
+      file_path,
+      hash: resolved.hash,
+    });
+    if (!insert.inserted) {
+      return res.status(409).json({ duplicate: true, existingJdId: Number(insert.existing.id), message: jdValidation.ERROR_MESSAGES.duplicate });
+    }
+    syncJDKeywordsFromText(insert.id, resolved.text);
+    const row = db.prepare('SELECT * FROM job_descriptions WHERE id = ?').get(insert.id);
     res.status(201).json(row);
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -369,22 +385,17 @@ router.put('/job-descriptions/:id', uploadDoc.single('file'), async (req, res) =
       file_path = saveBuffer(req.file.buffer, req.file.originalname, 'jds');
       if (!req.body.title) title = path.parse(req.file.originalname).name;
     }
+    const validation = jdValidation.validateJDText(description_text);
+    if (!validation.valid) return res.status(400).json({ error: validation.message });
+    const hash = jdValidation.hashJD(description_text);
+    const clash = db.prepare('SELECT id, title FROM job_descriptions WHERE jd_hash = ? AND id != ?').get(hash, existing.id);
+    if (clash) return res.status(409).json({ duplicate: true, existingJdId: clash.id, message: jdValidation.ERROR_MESSAGES.duplicate });
     const requirements = extractKeywords(description_text);
-    db.prepare('UPDATE job_descriptions SET title=?, client=?, company_id=?, description_text=?, requirements=?, file_path=? WHERE id=?').run(title, client, company_id, description_text, JSON.stringify(requirements), file_path, req.params.id);
+    db.prepare('UPDATE job_descriptions SET title=?, client=?, company_id=?, description_text=?, requirements=?, file_path=?, jd_hash=? WHERE id=?').run(title, client, company_id, description_text, JSON.stringify(requirements), file_path, hash, req.params.id);
     syncJDKeywordsFromText(req.params.id, description_text);
     const row = db.prepare('SELECT * FROM job_descriptions WHERE id = ?').get(req.params.id);
     res.json(row);
   } catch (e) { res.status(400).json({ error: e.message }); }
-});
-
-router.delete('/job-descriptions/:id', (req, res) => {
-  const existing = db.prepare('SELECT * FROM job_descriptions WHERE id = ?').get(req.params.id);
-  if (!existing) return res.status(404).json({ error: 'Job description not found' });
-  const linked = db.prepare('SELECT id FROM users WHERE job_description_id = ? LIMIT 1').get(req.params.id);
-  if (linked) return res.status(400).json({ error: 'Cannot delete — a candidate is linked to this JD' });
-  db.prepare('DELETE FROM job_descriptions WHERE id = ?').run(req.params.id);
-  if (existing.file_path) { try { fs.unlinkSync(path.join(__dirname, '..', existing.file_path)); } catch (e) {} }
-  res.json({ deleted: true });
 });
 
 router.post('/employees', uploadDoc.fields([{ name: 'resume', maxCount: 1 }, { name: 'jd_file', maxCount: 1 }]), async (req, res) => {
@@ -405,14 +416,28 @@ router.post('/employees', uploadDoc.fields([{ name: 'resume', maxCount: 1 }, { n
     const jdFile = req.files && req.files['jd_file'] ? req.files['jd_file'][0] : null;
 
     if (jdFile) {
-      const jdText = await extractText(jdFile.buffer, jdFile.originalname);
       const jdTitle = position || path.parse(jdFile.originalname).name;
       const jdClient = client || null;
-      const requirements = extractKeywords(jdText);
-      const jdFilePath = saveBuffer(jdFile.buffer, jdFile.originalname, 'jds');
-      const info = db.prepare('INSERT INTO job_descriptions (title, client, description_text, requirements, file_path) VALUES (?, ?, ?, ?, ?)').run(jdTitle, jdClient, jdText, JSON.stringify(requirements), jdFilePath);
-      job_description_id = Number(info.lastInsertRowid);
-      syncJDKeywordsFromText(job_description_id, jdText);
+      const resolved = await jdValidation.validateAndResolveJD({ buffer: jdFile.buffer, originalname: jdFile.originalname, title: jdTitle, client: jdClient }, { db });
+      if (resolved.status === 'invalid') return res.status(400).json({ error: resolved.error });
+      if (resolved.status === 'duplicate') {
+        job_description_id = Number(resolved.jd.id);
+      } else {
+        const jdFilePath = saveBuffer(jdFile.buffer, jdFile.originalname, 'jds');
+        const insert = jdValidation.insertJD(db, {
+          title: jdTitle,
+          client: jdClient,
+          description_text: resolved.text,
+          file_path: jdFilePath,
+          hash: resolved.hash,
+        });
+        if (insert.inserted) {
+          job_description_id = insert.id;
+          syncJDKeywordsFromText(job_description_id, resolved.text);
+        } else {
+          job_description_id = Number(insert.existing.id);
+        }
+      }
     }
 
     let resume_file_path = null;
