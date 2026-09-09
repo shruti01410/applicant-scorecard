@@ -7,6 +7,9 @@ function getToken() {
 const isFormData = (o) => typeof FormData !== 'undefined' && o instanceof FormData;
 
 async function request(path, options = {}) {
+  if (options.body != null && !isFormData(options.body) && typeof options.body === 'object') {
+    options = { ...options, body: JSON.stringify(options.body) };
+  }
   const headers = { ...(options.headers || {}) };
   if (!isFormData(options.body)) headers['Content-Type'] = 'application/json';
   const token = getToken();

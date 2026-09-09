@@ -94,7 +94,7 @@ export default function JobDescriptions() {
     if (busy) return;
     setBusy(true);
     try {
-      const data = await api.post(`/api/admin/job-descriptions/${view.id}/keywords`, { keyword: values.keyword, mode: values.mode || 'required' });
+      const data = await api.post(`/api/admin/job-descriptions/${view.id}/keywords`, JSON.stringify({ keyword: values.keyword, mode: values.mode || 'required' }));
       await refreshKeywords(data);
       message.success(`Added "${values.keyword}"`);
       fetchRows();
@@ -105,7 +105,7 @@ export default function JobDescriptions() {
     if (busy) return;
     setBusy(true);
     try {
-      const data = await api.post(`/api/admin/job-descriptions/${view.id}/keywords/reset`, {});
+      const data = await api.post(`/api/admin/job-descriptions/${view.id}/keywords/reset`, JSON.stringify({}));
       await refreshKeywords(data);
       message.success('Restored automatically extracted keywords');
       fetchRows();
