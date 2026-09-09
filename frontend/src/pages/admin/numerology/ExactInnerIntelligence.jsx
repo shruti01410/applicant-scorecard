@@ -258,30 +258,48 @@ function PieChart({ data, size = 170 }) {
   );
 }
 
-function LineChart({ data, width = 340, height = 170 }) {
-  const padding = 28;
+function LineChart({ data, width = 340, height = 200 }) {
+  const padTop = 28;
+  const padBottom = 48;
+  const padSide = 28;
   const maxVal = 5;
-  const stepX = (width - 2 * padding) / (data.length - 1 || 1);
+  const stepX = (width - 2 * padSide) / (data.length - 1 || 1);
   const points = data.map((d, i) => ({
-    x: padding + i * stepX,
-    y: height - padding - (d.value / maxVal) * (height - 2 * padding),
+    x: padSide + i * stepX,
+    y: padTop + (1 - d.value / maxVal) * (height - padTop - padBottom),
   }));
   const pathD = points.map((p, i) => (i === 0 ? "M" : "L") + `${p.x},${p.y}`).join(" ");
+
+  function wrapLabel(label) {
+    const words = label.split(" ");
+    if (words.length <= 2) return [label];
+    const mid = Math.ceil(words.length / 2);
+    return [words.slice(0, mid).join(" "), words.slice(mid).join(" ")];
+  }
+
+  const fs = 9;
+  const lh = fs + 2;
 
   return (
     <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: "block" }}>
       {[1, 2, 3, 4, 5].map((v) => {
-        const y = height - padding - (v / maxVal) * (height - 2 * padding);
-        return <line key={v} x1={padding} y1={y} x2={width - padding} y2={y} stroke="#eef0f7" strokeWidth={1} />;
+        const y = padTop + (1 - v / maxVal) * (height - padTop - padBottom);
+        return <line key={v} x1={padSide} y1={y} x2={width - padSide} y2={y} stroke="#eef0f7" strokeWidth={1} />;
       })}
       <path d={pathD} fill="none" stroke="#3d5df0" strokeWidth={2.5} />
-      {points.map((p, i) => (
-        <g key={i}>
-          <circle cx={p.x} cy={p.y} r={4} fill="#3d5df0" />
-          <text x={p.x} y={p.y - 10} fontSize="10.5" fontWeight="700" fill="#3d5df0" textAnchor="middle">{data[i].value}</text>
-          <text x={p.x} y={height - 8} fontSize="10" fill="#8892a8" textAnchor="middle">{data[i].label}</text>
-        </g>
-      ))}
+      {points.map((p, i) => {
+        const lines = wrapLabel(data[i].label);
+        const labelY = height - padBottom + 10;
+        return (
+          <g key={i}>
+            <circle cx={p.x} cy={p.y} r={4} fill="#3d5df0" />
+            <text x={p.x} y={p.y - 10} fontSize="10.5" fontWeight="700" fill="#3d5df0" textAnchor="middle">{data[i].value}</text>
+            {lines.map((line, li) => (
+              <text key={li} x={p.x} y={labelY + li * lh} fontSize={fs} fill="#8892a8" textAnchor="middle">{line}</text>
+            ))}
+          </g>
+        );
+      })}
     </svg>
   );
 }
@@ -678,9 +696,10 @@ function CardDetail({ card }) {
               <div key={d.name} style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
                 border: "1px solid #eceef5", borderRadius: 10, padding: "10px 12px",
+                minWidth: 0,
               }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "#1c2333" }}>{d.name}</div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "#1c2333", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</div>
                   <div style={{ fontSize: 11, color: "#a2a9bd" }}>{d.score}/5</div>
                 </div>
                 <div style={{
