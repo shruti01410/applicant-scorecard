@@ -60,3 +60,13 @@
   .score-top .container{padding:14px 32px}
 }
 
+/* Add Candidate modal: JD + Resume uploads side by side */
+.upload-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.upload-column{min-width:0}
+.upload-column .ant-select{width:100%}
+@media(max-width:700px){.upload-row{grid-template-columns:1fr}}
+.add-candidate-modal .ant-upload-list{margin-top:6px}
+.add-candidate-modal .ant-upload-list-item{overflow:hidden}
+.add-candidate-modal .ant-upload-list-item-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.add-candidate-modal .ant-upload-list-item .anticon{flex-shrink:0}
+

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
-  Typography, Table, Button, Input, Space, Tag, Modal, Form, message, Card, Select, Upload, Popconfirm, Segmented, Dropdown, DatePicker, Row, Col,
+  Typography, Table, Button, Input, Space, Tag, Modal, Form, message, Card, Select, Upload, Popconfirm, Segmented, Dropdown, DatePicker,
 } from 'antd';
 import { Link } from 'react-router-dom';
 import { UploadOutlined, PlusOutlined, FileTextOutlined, StarOutlined, StarFilled, DeleteOutlined, InboxOutlined, UndoOutlined } from '@ant-design/icons';
@@ -233,25 +233,23 @@ export default function ScoresPage() {
         </div>
       </div>
 
-      <Modal title="Add Candidate" open={addOpen} onCancel={() => setAddOpen(false)} footer={null} width={560}>
+      <Modal title="Add Candidate" open={addOpen} onCancel={() => setAddOpen(false)} footer={null} width={560} className="add-candidate-modal">
         <Form form={addForm} layout="vertical" onFinish={onAddCandidates}>
           <Form.Item name="name" label="Name" rules={[{ required: true, message: 'Required' }]}><Input placeholder="Full name" /></Form.Item>
           <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email', message: 'Valid email required' }]}><Input placeholder="Email" /></Form.Item>
           <Form.Item name="date_of_birth" label="Date of Birth *" rules={[{ required: true, message: 'Date of Birth is required.' }]}><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="DD/MM/YYYY" disabledDate={(d) => d && d.isAfter(new Date())} /></Form.Item>
           <Form.Item name="position" label="Role / Position"><Input placeholder="Senior Accounts Payable" /></Form.Item>
           <Form.Item name="client" label="Client"><Input placeholder="iSHR" /></Form.Item>
-          <Form.Item name="job_description_id" label="Job Description"><Select style={{ width: '100%' }} placeholder="Select existing JD — or upload new below" allowClear options={jds.map(j => ({ value: j.id, label: `${j.title}${j.client ? ` · ${j.client}` : ''}` }))} /></Form.Item>
-          <Row gutter={16} align="top">
-            <Col span={12}>
-              <div style={{ fontSize: 14, color: '#dc2626', fontWeight: 500, marginBottom: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>JD PDF/DOCX (creates JD on the fly)</div>
-              <Form.Item name="jd_file" valuePropName="file"><Upload beforeUpload={() => false} maxCount={1} accept=".pdf,.docx"><Button icon={<UploadOutlined />}>Upload JD</Button></Upload></Form.Item>
-            </Col>
-            <Col span={12}>
-              <div style={{ fontSize: 14, color: '#16a34a', fontWeight: 500, marginBottom: 8 }}>Resume (PDF/DOCX, 10MB)</div>
-              <Form.Item name="resume" valuePropName="file"><Upload beforeUpload={() => false} maxCount={1} accept=".pdf,.docx"><Button icon={<UploadOutlined />}>Upload Resume</Button></Upload></Form.Item>
-            </Col>
-          </Row>
-          <div style={{ fontSize: 11, color: '#9aa0a6', marginBottom: 12 }}><FileTextOutlined /> Upload JD PDF + resume together → JD is created, Capability Match % computed, and the <b>23 parameters are auto-rated</b> (role + numerology aware, editable). Or pick an existing JD.</div>
+          <div className="upload-row">
+            <div className="upload-column">
+              <Form.Item name="job_description_id" label="Job Description"><Select style={{ width: '100%' }} placeholder="Select existing JD — or upload new below" allowClear options={jds.map(j => ({ value: j.id, label: `${j.title}${j.client ? ` · ${j.client}` : ''}` }))} /></Form.Item>
+              <Form.Item name="jd_file" valuePropName="file"><Upload beforeUpload={() => false} maxCount={1} accept=".pdf,.docx"><Button icon={<UploadOutlined />} block>Select JD file</Button></Upload></Form.Item>
+            </div>
+            <div className="upload-column">
+              <Form.Item name="resume" label="Resume (PDF/DOCX, 10MB)" valuePropName="file"><Upload beforeUpload={() => false} maxCount={1} accept=".pdf,.docx"><Button icon={<UploadOutlined />} block>Select resume file</Button></Upload></Form.Item>
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: '#9aa0a6', marginBottom: 12 }}><FileTextOutlined /> Upload JD + resume to calculate Capability Match and auto-rate parameters.</div>
           <Button type="primary" htmlType="submit" block>Add Candidate</Button>
         </Form>
       </Modal>
