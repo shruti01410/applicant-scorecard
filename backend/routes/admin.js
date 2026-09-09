@@ -186,7 +186,8 @@ router.delete('/employees/:id', (req, res) => {
 });
 
 router.get('/job-descriptions', (req, res) => {
-  const rows = db.prepare('SELECT jd.id, jd.title, jd.client, jd.company_id, jd.created_at, (SELECT COUNT(*) FROM jd_keywords k WHERE k.jd_id = jd.id AND k.is_active = 1) AS keyword_count FROM job_descriptions jd ORDER BY jd.created_at DESC').all();
+  const archived = req.query.archived === '1' ? 'AND jd.is_archived = 1' : 'AND jd.is_archived = 0';
+  const rows = db.prepare(`SELECT jd.id, jd.title, jd.client, jd.company_id, jd.is_favorite, jd.is_archived, jd.created_at, (SELECT COUNT(*) FROM jd_keywords k WHERE k.jd_id = jd.id AND k.is_active = 1) AS keyword_count FROM job_descriptions jd WHERE 1=1 ${archived} ORDER BY jd.is_favorite DESC, jd.created_at DESC`).all();
   res.json(rows);
 });
 
@@ -196,6 +197,46 @@ router.get('/job-descriptions/:id', (req, res) => {
   try { row.requirements = row.requirements ? JSON.parse(row.requirements) : []; } catch (e) { row.requirements = []; }
   row.keywords = getJDKeywords(row.id);
   res.json(row);
+});
+
+// ---- JD favorite / archive / delete ----
+
+router.post('/job-descriptions/:id/favorite', (req, res) => {
+  const jd = db.prepare('SELECT id, is_favorite FROM job_descriptions WHERE id = ?').get(req.params.id);
+  if (!jd) return res.status(404).json({ error: 'Job description not found' });
+  const next = jd.is_favorite ? 0 : 1;
+  db.prepare('UPDATE job_descriptions SET is_favorite = ? WHERE id = ?').run(next, jd.id);
+  res.json({ id: jd.id, is_favorite: next });
+});
+
+router.post('/job-descriptions/:id/archive', (req, res) => {
+  const jd = db.prepare('SELECT id FROM job_descriptions WHERE id = ?').get(req.params.id);
+  if (!jd) return res.status(404).json({ error: 'Job description not found' });
+  db.prepare('UPDATE job_descriptions SET is_archived = 1 WHERE id = ?').run(jd.id);
+  res.json({ id: jd.id, is_archived: 1 });
+});
+
+router.post('/job-descriptions/:id/restore', (req, res) => {
+  const jd = db.prepare('SELECT id FROM job_descriptions WHERE id = ?').get(req.params.id);
+  if (!jd) return res.status(404).json({ error: 'Job description not found' });
+  db.prepare('UPDATE job_descriptions SET is_archived = 0 WHERE id = ?').run(jd.id);
+  res.json({ id: jd.id, is_archived: 0 });
+});
+
+router.delete('/job-descriptions/:id', (req, res) => {
+  const jd = db.prepare('SELECT id FROM job_descriptions WHERE id = ?').get(req.params.id);
+  if (!jd) return res.status(404).json({ error: 'Job description not found' });
+  db.exec('BEGIN');
+  try {
+    db.prepare('DELETE FROM jd_keywords WHERE jd_id = ?').run(jd.id);
+    db.prepare('DELETE FROM job_descriptions WHERE id = ?').run(jd.id);
+    db.prepare('UPDATE users SET job_description_id = NULL WHERE job_description_id = ?').run(jd.id);
+    db.exec('COMMIT');
+  } catch (e) {
+    try { db.exec('ROLLBACK'); } catch (ignored) {}
+    return res.status(500).json({ error: e.message });
+  }
+  res.json({ ok: true, id: jd.id });
 });
 
 // ---- Editable JD keywords (source of truth for resume comparison) ----

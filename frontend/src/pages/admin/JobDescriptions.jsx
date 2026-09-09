@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Table, Button, Modal, Form, Input, Upload, Tag, Typography, Space, Select, message } from 'antd';
-import { UploadOutlined, FileTextOutlined, DeleteOutlined, ReloadOutlined, PlusOutlined, TagsOutlined, SaveOutlined } from '@ant-design/icons';
+import { Card, Table, Button, Modal, Form, Input, Upload, Tag, Typography, Space, Select, message, Dropdown, Segmented } from 'antd';
+import { UploadOutlined, FileTextOutlined, DeleteOutlined, ReloadOutlined, PlusOutlined, TagsOutlined, SaveOutlined, EllipsisOutlined, StarFilled, StarOutlined, InboxOutlined, EditOutlined } from '@ant-design/icons';
 import { api } from '../../services/api';
 
 const { Title, Text } = Typography;
@@ -28,11 +28,12 @@ export default function JobDescriptions() {
   const [descDraft, setDescDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [companies, setCompanies] = useState([]);
+  const [archivedTab, setArchivedTab] = useState(false);
   const [form] = Form.useForm();
 
-  async function fetchRows() {
+  async function fetchRows(archived = archivedTab) {
     setLoading(true);
-    try { setRows(await api.get('/api/admin/job-descriptions')); } catch (e) { message.error(e.message); } finally { setLoading(false); }
+    try { setRows(await api.get(`/api/admin/job-descriptions${archived ? '?archived=1' : ''}`)); } catch (e) { message.error(e.message); } finally { setLoading(false); }
   }
   useEffect(() => { fetchRows(); api.get('/api/admin/companies').then(setCompanies).catch(()=>{}); }, []);
 
@@ -130,17 +131,103 @@ export default function JobDescriptions() {
     } catch (e) { message.error(e.message); } finally { setBusy(false); }
   }
 
+  async function toggleFavorite(r) {
+    try {
+      const res = await api.post(`/api/admin/job-descriptions/${r.id}/favorite`, {});
+      message[res.is_favorite ? 'success' : 'info'](res.is_favorite ? `Favorited "${r.title}"` : `Removed "${r.title}" from favorites`);
+      fetchRows();
+    } catch (e) { message.error(e.message); }
+  }
+
+  async function archiveJD(r) {
+    try {
+      await api.post(`/api/admin/job-descriptions/${r.id}/archive`, {});
+      message.success(`Archived "${r.title}" — see it under the Archive tab`);
+      fetchRows();
+    } catch (e) { message.error(e.message); }
+  }
+
+  async function restoreJD(r) {
+    try {
+      await api.post(`/api/admin/job-descriptions/${r.id}/restore`, {});
+      message.success(`Restored "${r.title}"`);
+      fetchRows();
+    } catch (e) { message.error(e.message); }
+  }
+
+  async function deleteJD(r) {
+    try {
+      await api.delete(`/api/admin/job-descriptions/${r.id}`);
+      message.success(`Deleted "${r.title}"`);
+      if (view && view.id === r.id) setView(null);
+      fetchRows();
+    } catch (e) { message.error(e.message); }
+  }
+
+  function confirmDelete(r) {
+    Modal.confirm({
+      title: 'Delete this JD?',
+      content: `"${r.title}" and its extracted keywords will be permanently deleted. Linked employees keep their data but lose JD-matched capability scores.`,
+      okText: 'Delete',
+      okButtonProps: { danger: true },
+      cancelText: 'Cancel',
+      onOk: () => deleteJD(r),
+    });
+  }
+
+  function onRowMenu(key, r) {
+    if (key === 'edit') openView(r.id);
+    else if (key === 'favorite') toggleFavorite(r);
+    else if (key === 'archive') archiveJD(r);
+    else if (key === 'restore') restoreJD(r);
+    else if (key === 'delete') confirmDelete(r);
+  }
+
   const activeKeywords = (view?.keywords || []).filter(k => k.is_active);
   const required = activeKeywords.filter(k => k.mode === 'required');
   const preferred = activeKeywords.filter(k => k.mode === 'preferred');
 
+  const rowMenu = (r) => {
+    const items = [
+      { key: 'edit', icon: <EditOutlined />, label: 'JD Intelligence (keywords / text)' },
+      r.is_favorite
+        ? { key: 'favorite', icon: <StarFilled style={{ color: '#f59e0b' }} />, label: 'Unfavorite' }
+        : { key: 'favorite', icon: <StarOutlined />, label: '⭐ Favorite' },
+      { type: 'divider' },
+    ];
+    if (archivedTab) {
+      items.push({ key: 'restore', icon: <InboxOutlined />, label: 'Restore from archive' });
+    } else {
+      items.push({ key: 'archive', icon: <InboxOutlined />, label: 'Archive' });
+    }
+    items.push(
+      { type: 'divider' },
+      { key: 'delete', danger: true, icon: <DeleteOutlined />, label: '🗑 Delete' },
+    );
+    return { items, onClick: ({ key }) => onRowMenu(key, r) };
+  };
+
   const columns = [
-    { title: 'Title', dataIndex: 'title', render: (v, r) => <a onClick={() => openView(r.id)}>{v}</a> },
+    {
+      title: 'Title',
+      dataIndex: 'title',
+      render: (v, r) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <a onClick={() => openView(r.id)} style={{ fontWeight: r.is_favorite ? 600 : 'normal' }}>
+            {v} {r.is_favorite && <StarFilled style={{ color: '#f59e0b', fontSize: 12 }} />}
+          </a>
+          <div style={{ marginLeft: 'auto' }}>
+            <Dropdown menu={rowMenu(r)} trigger={['click']} placement="bottomRight">
+              <Button type="text" size="small" icon={<EllipsisOutlined />} style={{ borderRadius: 6 }} />
+            </Dropdown>
+          </div>
+        </div>
+      ),
+    },
     { title: 'Client', dataIndex: 'client', render: v => v || '—' },
     { title: 'Company', dataIndex: 'company_id', render: v => v ? `Company #${v}` : '—' },
     { title: 'Active keywords', dataIndex: 'keyword_count', render: v => <Tag color={v ? 'geekblue' : 'default'}>{v || 0}</Tag> },
     { title: 'Created', dataIndex: 'created_at', render: v => v ? new Date(v).toLocaleDateString() : '—' },
-    { title: 'Action', render: (_, r) => <Button size="small" onClick={() => openView(r.id)}>Edit keywords</Button> },
   ];
 
   return (
@@ -151,7 +238,18 @@ export default function JobDescriptions() {
       </div>
       <Text type="secondary" style={{ display: 'block', marginBottom: 16, fontSize: 13 }}>
         Editable JD Intelligence — edit the JD text or the keyword set itself. Keywords are extracted from the JD, you can add / remove them, and the active set is what resume comparison uses.
+        Use the ⋮ menu on each JD to favorite, archive, or delete it.
       </Text>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
+        <Segmented
+          value={archivedTab ? 'archived' : 'active'}
+          onChange={(v) => { const isArch = v === 'archived'; setArchivedTab(isArch); fetchRows(isArch); }}
+          options={[
+            { label: 'Active', value: 'active' },
+            { label: 'Archive', value: 'archived' },
+          ]}
+        />
+      </div>
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} pagination={{ pageSize: 10 }} />
 
       <Modal title="Add Job Description" open={open} onCancel={() => setOpen(false)} footer={null} width={640}>

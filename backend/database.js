@@ -97,6 +97,8 @@ db.exec(`
     description_text TEXT NOT NULL,
     requirements TEXT,
     file_path TEXT,
+    is_favorite INTEGER NOT NULL DEFAULT 0,
+    is_archived INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -147,6 +149,8 @@ try {
 try {
   const jdCols = db.prepare(`PRAGMA table_info(job_descriptions)`).all().map(r => r.name);
   if (!jdCols.includes('company_id')) db.exec(`ALTER TABLE job_descriptions ADD COLUMN company_id INTEGER REFERENCES company_numerology_profiles(id)`);
+  if (!jdCols.includes('is_favorite')) db.exec(`ALTER TABLE job_descriptions ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0`);
+  if (!jdCols.includes('is_archived')) db.exec(`ALTER TABLE job_descriptions ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0`);
 } catch (e) {}
 
 try {
