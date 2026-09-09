@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Tag, Typography, Progress, Spin, Alert, Button, Space } from 'antd';
 import { Link, useParams } from 'react-router-dom';
-import { CheckCircleOutlined, WarningOutlined, FileTextOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, WarningOutlined, FileTextOutlined, TagsOutlined } from '@ant-design/icons';
 import { api } from '../../services/api';
 
 const { Title, Text, Paragraph } = Typography;
@@ -46,6 +46,10 @@ export default function CapabilityMatchPage() {
     })();
   }, [id]);
 
+  const jdLink = data?.jdId
+    ? <Link to={`/job-descriptions?jd=${data.jdId}`}><Button size="small" icon={<TagsOutlined />} style={{ marginLeft: 8 }}>Edit JD keywords</Button></Link>
+    : null;
+
   if (loading) return <div style={{ textAlign:'center', padding:40 }}><Spin /></div>;
   if (!data) return <Alert type="error" message="No data" />;
   if (data.pct == null) return (
@@ -61,8 +65,8 @@ export default function CapabilityMatchPage() {
     <div style={{ maxWidth:960, margin:'0 auto' }}>
       <Link to={`/scores/${id}`}><Button size="small" style={{ marginBottom:12 }}>← Back to Scorecard — {sc?.applicant_name || `Candidate ${id}`}</Button></Link>
       <Card style={{ borderRadius:12 }}>
-        <Title level={4} style={{ margin:0 }}><FileTextOutlined /> Capability Match — JD ↔ Resume</Title>
-        <Text type="secondary" style={{ fontSize:13 }}>Structured extraction — skills, tools, soft skills, domain, education, certifications & experience, split into Required and Preferred. No external API.</Text>
+        <Title level={4} style={{ margin:0 }}><FileTextOutlined /> Capability Match — JD ↔ Resume {jdLink}</Title>
+        <Text type="secondary" style={{ fontSize:13 }}>Structured extraction — skills, tools, soft skills, domain, education, certifications & experience, split into Required and Preferred. No external API. The keyword set shown is the edited one (JD Intelligence).</Text>
         <div style={{ display:'flex', alignItems:'center', gap:24, marginTop:16, flexWrap:'wrap' }}>
           <Progress type="circle" size={96} percent={data.pct} strokeColor={data.pct>=70?'#16a34a':data.pct>=40?'#f59e0b':'#ef4444'} format={()=> <span style={{ fontSize:22, fontWeight:800 }}>{data.pct}%</span>} />
           <div style={{ flex:1, minWidth:240 }}>

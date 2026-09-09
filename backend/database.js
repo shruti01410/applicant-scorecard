@@ -100,6 +100,16 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS jd_keywords (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    jd_id INTEGER NOT NULL REFERENCES job_descriptions(id) ON DELETE CASCADE,
+    keyword TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'EXTRACTED' CHECK(source IN ('EXTRACTED','USER_ADDED')),
+    mode TEXT NOT NULL DEFAULT 'required' CHECK(mode IN ('required','preferred')),
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
   CREATE TABLE IF NOT EXISTS org_settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
@@ -253,6 +263,27 @@ try {
   const hasRisha = db.prepare('SELECT id FROM users WHERE LOWER(username) = ?').get('risha');
   if (!hasRisha) {
     db.prepare('INSERT INTO users (username, password, role, name, email) VALUES (?, ?, ?, ?, ?)').run('Risha', bcrypt.hashSync('rishasinha', 10), 'admin', 'Risha Sinha', 'risha@scorecard.com');
+  }
+} catch (e) {}
+
+// ---- JD keyword backfill: seed jd_keywords from each JD's extracted entities.
+// Idempotent — only seeds JDs that have no keyword rows yet, so an existing
+// curated/edited keyword set is never clobbered. ----
+try {
+  const { extractStructured } = require('./capabilityMatch');
+  const countKw = db.prepare('SELECT COUNT(*) AS c FROM jd_keywords WHERE jd_id = ?');
+  const insertKw = db.prepare('INSERT INTO jd_keywords (jd_id, keyword, source, mode, is_active) VALUES (?, ?, ?, ?, 1)');
+  const jds = db.prepare('SELECT id, description_text FROM job_descriptions').all();
+  for (const jd of jds) {
+    if (countKw.get(jd.id).c > 0) continue;
+    const entities = extractStructured(jd.description_text, { jd: true });
+    const seen = new Set();
+    for (const e of entities) {
+      const k = e.display.toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      insertKw.run(jd.id, k, 'EXTRACTED', e.mode);
+    }
   }
 } catch (e) {}
 

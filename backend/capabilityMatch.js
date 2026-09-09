@@ -1037,10 +1037,68 @@ function initCategory(cats, cat) {
   return cats[cat];
 }
 
-function matchResumeToJD(jdText, resumeText) {
-  const jdRequired = extractStructured(jdText, { jd: true }).filter((e) => e.mode === 'required');
-  const jdPreferred = extractStructured(jdText, { jd: true }).filter((e) => e.mode === 'preferred');
+// ---------------------------------------------------------------
+// Edited-keyword overlay: when a JD has a curated keyword set, the
+// comparison runs against those keywords instead of re-extracting the
+// raw JD text. KB-resolvable keywords keep their normal semantics;
+// anything else falls back to normalized phrase containment.
+// ---------------------------------------------------------------
+
+const EXPERIENCE_KEYWORD_RE = /(\d{1,2})\s*(?:[-+]|\bto\b)\s*(\d{1,2})\s*(?:years?|yrs)|(\d{1,2})\s*\+?\s*(?:years?|yrs|yr)/i;
+
+function keywordEntity(keyword, mode) {
+  const raw = String(keyword == null ? '' : keyword).trim();
+  const norm = normalize(raw);
+  const term = resolveKey(norm);
+  const ent = term ? TERM_MAP.get(term) : null;
+  if (ent) {
+    return {
+      display: ent.display,
+      category: ent.category,
+      mode,
+      confidence: ent.confidence,
+      term,
+      keyword: norm,
+      years: null,
+    };
+  }
+  const yr = EXPERIENCE_KEYWORD_RE.exec(norm);
+  if (yr) {
+    let years = null;
+    if (yr[1] && yr[2]) years = { min: parseInt(yr[1], 10), max: parseInt(yr[2], 10) };
+    else if (yr[3]) years = { min: parseInt(yr[3], 10), max: Infinity };
+    return { display: raw, category: 'experience', mode, confidence: 0.85, term: null, keyword: norm, years };
+  }
+  return { display: raw || norm, category: 'other', mode, confidence: 0.6, term: null, keyword: norm, years: null };
+}
+
+function containsPhrase(text, phrase) {
+  if (!phrase) return false;
+  const ts = text.split(' ');
+  const ps = phrase.split(' ');
+  if (ps.length > ts.length) return false;
+  for (let i = 0; i + ps.length <= ts.length; i++) {
+    let ok = true;
+    for (let j = 0; j < ps.length; j++) {
+      if (ts[i + j] !== ps[j]) { ok = false; break; }
+    }
+    if (ok) return true;
+  }
+  return false;
+}
+
+function matchResumeToJD(jdText, resumeText, opts = {}) {
+  const override = opts.jdKeywords && opts.jdKeywords.length ? opts.jdKeywords : null;
+  let jdEntities;
+  if (override) {
+    jdEntities = override.map((kw) => keywordEntity(kw.keyword != null ? kw.keyword : kw, kw.mode || 'required'));
+  } else {
+    jdEntities = extractStructured(jdText, { jd: true });
+  }
+  const jdRequired = jdEntities.filter((e) => e.mode === 'required');
+  const jdPreferred = jdEntities.filter((e) => e.mode === 'preferred');
   const resumeProfile = extractCandidateProfile(resumeText);
+  const normResume = normalize(resumeText);
 
   // Years a candidate can be credited with: a bounded "A-B years" claim counts its
   // upper bound, while a "N+ years"/"N years"/Fresher claim counts its lower bound.
@@ -1057,12 +1115,14 @@ function matchResumeToJD(jdText, resumeText) {
       if (re.years.min <= 0) return true;
       return resumeMaxYears >= re.years.min;
     }
-    return resumeProfile.has(re.term);
+    if (re.term) return resumeProfile.has(re.term);
+    return containsPhrase(normResume, re.keyword);
   };
   const resumeMatchFor = (re) => {
     if (re.category === 'experience' && re.years) {
       return resumeExpEntity ? resumeExpEntity.display : null;
     }
+    if (!re.term) return isMatched(re) ? re.display : null;
     return resumeProfile.has(re.term) ? resumeProfile.get(re.term).display : null;
   };
   const matchStatus = (re) => (isMatched(re) ? 'match' : 'missing');
@@ -1115,7 +1175,6 @@ function matchResumeToJD(jdText, resumeText) {
 
   const totalRequired = matched.length + missing.length;
   const pct = totalRequired ? Math.round((matched.length / totalRequired) * 100) : 0;
-  const jdEntities = extractStructured(jdText, { jd: true });
 
   return {
     pct,

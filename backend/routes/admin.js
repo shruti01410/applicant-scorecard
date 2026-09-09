@@ -45,12 +45,44 @@ function saveBuffer(buffer, originalname, sub) {
   return path.join('uploads', sub, fname).replace(/\\/g, '/');
 }
 
+// ---------------------------------------------------------------
+// JD keyword helpers — the curated keyword set is the source of truth
+// for resume comparison once it exists (see jd_keywords table).
+// ---------------------------------------------------------------
+
+function getJDKeywords(jdId, activeOnly) {
+  const sql = activeOnly
+    ? 'SELECT id, jd_id, keyword, source, mode, is_active, created_at FROM jd_keywords WHERE jd_id = ? AND is_active = 1 ORDER BY source, id'
+    : 'SELECT id, jd_id, keyword, source, mode, is_active, created_at FROM jd_keywords WHERE jd_id = ? ORDER BY is_active DESC, source, id';
+  return db.prepare(sql).all(jdId);
+}
+
+function getActiveJDKeywords(jdId) {
+  return db.prepare('SELECT keyword, mode FROM jd_keywords WHERE jd_id = ? AND is_active = 1 ORDER BY id').all(jdId);
+}
+
+function syncJDKeywordsFromText(jdId, descriptionText) {
+  const { extractStructured } = require('../capabilityMatch');
+  const entities = extractStructured(descriptionText, { jd: true });
+  const exists = db.prepare('SELECT 1 FROM jd_keywords WHERE jd_id = ? AND keyword = ? LIMIT 1');
+  const insert = db.prepare('INSERT INTO jd_keywords (jd_id, keyword, source, mode, is_active) VALUES (?, ?, ?, ?, 1)');
+  const seen = new Set();
+  for (const e of entities) {
+    const k = e.display.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    if (exists.get(jdId, k)) continue;
+    insert.run(jdId, k, 'EXTRACTED', e.mode);
+  }
+}
+
 function runCapabilityMatch(userId) {
   const user = db.prepare('SELECT resume_text, job_description_id FROM users WHERE id = ?').get(userId);
   if (!user || !user.resume_text || !user.job_description_id) return null;
   const jd = db.prepare('SELECT description_text FROM job_descriptions WHERE id = ?').get(user.job_description_id);
   if (!jd) return null;
-  const { pct, matched, missing, categories } = matchResumeToJD(jd.description_text, user.resume_text);
+  const jdKeywords = getActiveJDKeywords(user.job_description_id);
+  const { pct, matched, missing, categories } = matchResumeToJD(jd.description_text, user.resume_text, { jdKeywords });
   const detail = JSON.stringify({ matched, missing, categories });
   db.prepare('UPDATE users SET capability_match_pct = ?, capability_match_detail = ? WHERE id = ?').run(pct, detail, userId);
   return { pct, matched, missing, categories };
@@ -154,7 +186,7 @@ router.delete('/employees/:id', (req, res) => {
 });
 
 router.get('/job-descriptions', (req, res) => {
-  const rows = db.prepare('SELECT id, title, client, company_id, created_at FROM job_descriptions ORDER BY created_at DESC').all();
+  const rows = db.prepare('SELECT jd.id, jd.title, jd.client, jd.company_id, jd.created_at, (SELECT COUNT(*) FROM jd_keywords k WHERE k.jd_id = jd.id AND k.is_active = 1) AS keyword_count FROM job_descriptions jd ORDER BY jd.created_at DESC').all();
   res.json(rows);
 });
 
@@ -162,7 +194,94 @@ router.get('/job-descriptions/:id', (req, res) => {
   const row = db.prepare('SELECT * FROM job_descriptions WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Job description not found' });
   try { row.requirements = row.requirements ? JSON.parse(row.requirements) : []; } catch (e) { row.requirements = []; }
+  row.keywords = getJDKeywords(row.id);
   res.json(row);
+});
+
+// ---- Editable JD keywords (source of truth for resume comparison) ----
+
+router.post('/job-descriptions/:id/keywords', (req, res) => {
+  const jd = db.prepare('SELECT id FROM job_descriptions WHERE id = ?').get(req.params.id);
+  if (!jd) return res.status(404).json({ error: 'Job description not found' });
+  const keyword = String(req.body.keyword || '').trim();
+  const mode = req.body.mode === 'preferred' ? 'preferred' : 'required';
+  if (!keyword) return res.status(400).json({ error: 'keyword is required' });
+  const k = keyword.toLowerCase();
+  const existing = db.prepare('SELECT id, is_active FROM jd_keywords WHERE jd_id = ? AND keyword = ?').get(jd.id, k);
+  if (existing) {
+    db.prepare('UPDATE jd_keywords SET is_active = 1, mode = ? WHERE id = ?').run(mode, existing.id);
+  } else {
+    db.prepare('INSERT INTO jd_keywords (jd_id, keyword, source, mode, is_active) VALUES (?, ?, ?, ?, 1)').run(jd.id, k, 'USER_ADDED', mode);
+  }
+  res.json({ keywords: getJDKeywords(jd.id) });
+});
+
+router.put('/job-descriptions/:id/keywords', (req, res) => {
+  const jd = db.prepare('SELECT id FROM job_descriptions WHERE id = ?').get(req.params.id);
+  if (!jd) return res.status(404).json({ error: 'Job description not found' });
+  const list = Array.isArray(req.body.keywords) ? req.body.keywords : [];
+  const wanted = [];
+  const seen = new Set();
+  for (const item of list) {
+    const raw = (typeof item === 'string' ? item : (item && item.keyword)) || '';
+    const k = raw.trim().toLowerCase();
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    wanted.push({ keyword: k, mode: (item && item.mode) === 'preferred' ? 'preferred' : 'required' });
+  }
+  db.exec('BEGIN');
+  try {
+    db.prepare('UPDATE jd_keywords SET is_active = 0 WHERE jd_id = ?').run(jd.id);
+    const find = db.prepare('SELECT id FROM jd_keywords WHERE jd_id = ? AND keyword = ?');
+    const upd = db.prepare('UPDATE jd_keywords SET is_active = 1, mode = ? WHERE id = ?');
+    const ins = db.prepare('INSERT INTO jd_keywords (jd_id, keyword, source, mode, is_active) VALUES (?, ?, ?, ?, 1)');
+    for (const w of wanted) {
+      const row = find.get(jd.id, w.keyword);
+      if (row) upd.run(w.mode, row.id);
+      else ins.run(jd.id, w.keyword, 'USER_ADDED', w.mode);
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    try { db.exec('ROLLBACK'); } catch (ignored) {}
+    return res.status(500).json({ error: e.message });
+  }
+  res.json({ keywords: getJDKeywords(jd.id) });
+});
+
+router.delete('/job-descriptions/:id/keywords/:keywordId', (req, res) => {
+  const row = db.prepare('SELECT id FROM jd_keywords WHERE id = ? AND jd_id = ?').get(req.params.keywordId, req.params.id);
+  if (!row) return res.status(404).json({ error: 'Keyword not found' });
+  db.prepare('UPDATE jd_keywords SET is_active = 0 WHERE id = ?').run(row.id);
+  res.json({ keywords: getJDKeywords(req.params.id) });
+});
+
+router.post('/job-descriptions/:id/keywords/reset', (req, res) => {
+  const jd = db.prepare('SELECT id, description_text FROM job_descriptions WHERE id = ?').get(req.params.id);
+  if (!jd) return res.status(404).json({ error: 'Job description not found' });
+  db.exec('BEGIN');
+  try {
+    db.prepare('DELETE FROM jd_keywords WHERE jd_id = ? AND source = ?').run(jd.id, 'USER_ADDED');
+    db.prepare('UPDATE jd_keywords SET is_active = 0 WHERE jd_id = ?').run(jd.id);
+    const { extractStructured } = require('../capabilityMatch');
+    const entities = extractStructured(jd.description_text, { jd: true });
+    const find = db.prepare('SELECT id FROM jd_keywords WHERE jd_id = ? AND keyword = ?');
+    const upd = db.prepare('UPDATE jd_keywords SET is_active = 1, source = \'EXTRACTED\', mode = ? WHERE id = ?');
+    const ins = db.prepare('INSERT INTO jd_keywords (jd_id, keyword, source, mode, is_active) VALUES (?, ?, ?, ?, 1)');
+    const seen = new Set();
+    for (const e of entities) {
+      const k = e.display.toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      const row = find.get(jd.id, k);
+      if (row) upd.run(e.mode, row.id);
+      else ins.run(jd.id, k, 'EXTRACTED', e.mode);
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    try { db.exec('ROLLBACK'); } catch (ignored) {}
+    return res.status(500).json({ error: e.message });
+  }
+  res.json({ keywords: getJDKeywords(jd.id) });
 });
 
 router.post('/job-descriptions', uploadDoc.single('file'), async (req, res) => {
@@ -186,6 +305,7 @@ router.post('/job-descriptions', uploadDoc.single('file'), async (req, res) => {
     const info = db.prepare(
       'INSERT INTO job_descriptions (title, client, company_id, description_text, requirements, file_path) VALUES (?, ?, ?, ?, ?, ?)'
     ).run(title, client || null, company_id, description_text, JSON.stringify(requirements), file_path);
+    syncJDKeywordsFromText(info.lastInsertRowid, description_text);
     const row = db.prepare('SELECT * FROM job_descriptions WHERE id = ?').get(info.lastInsertRowid);
     res.status(201).json(row);
   } catch (e) {
@@ -210,6 +330,7 @@ router.put('/job-descriptions/:id', uploadDoc.single('file'), async (req, res) =
     }
     const requirements = extractKeywords(description_text);
     db.prepare('UPDATE job_descriptions SET title=?, client=?, company_id=?, description_text=?, requirements=?, file_path=? WHERE id=?').run(title, client, company_id, description_text, JSON.stringify(requirements), file_path, req.params.id);
+    syncJDKeywordsFromText(req.params.id, description_text);
     const row = db.prepare('SELECT * FROM job_descriptions WHERE id = ?').get(req.params.id);
     res.json(row);
   } catch (e) { res.status(400).json({ error: e.message }); }
@@ -250,6 +371,7 @@ router.post('/employees', uploadDoc.fields([{ name: 'resume', maxCount: 1 }, { n
       const jdFilePath = saveBuffer(jdFile.buffer, jdFile.originalname, 'jds');
       const info = db.prepare('INSERT INTO job_descriptions (title, client, description_text, requirements, file_path) VALUES (?, ?, ?, ?, ?)').run(jdTitle, jdClient, jdText, JSON.stringify(requirements), jdFilePath);
       job_description_id = Number(info.lastInsertRowid);
+      syncJDKeywordsFromText(job_description_id, jdText);
     }
 
     let resume_file_path = null;
@@ -267,7 +389,7 @@ router.post('/employees', uploadDoc.fields([{ name: 'resume', maxCount: 1 }, { n
     if (resume_text && job_description_id) {
       const jd = db.prepare('SELECT description_text, title FROM job_descriptions WHERE id = ?').get(job_description_id);
       if (jd) {
-        const { pct, matched, missing, categories } = matchResumeToJD(jd.description_text, resume_text);
+        const { pct, matched, missing, categories } = matchResumeToJD(jd.description_text, resume_text, { jdKeywords: getActiveJDKeywords(job_description_id) });
         db.prepare('UPDATE users SET capability_match_pct = ?, capability_match_detail = ? WHERE id = ?').run(pct, JSON.stringify({ matched, missing, categories }), user.id);
         user.capability_match_pct = pct;
         const numerologyProfile = db.prepare('SELECT life_path_number FROM numerology_profiles WHERE employee_id = ? AND dimension = ?').get(user.id, 'candidate');
@@ -338,11 +460,12 @@ router.get('/employees/:id/capability-match', (req, res) => {
     }
     const jd = db.prepare('SELECT description_text FROM job_descriptions WHERE id = ?').get(emp.job_description_id);
     if (!jd) return res.status(404).json({ error: 'Job description not found' });
-    const match = matchResumeToJD(jd.description_text, emp.resume_text);
+    const jdKeywords = getActiveJDKeywords(emp.job_description_id);
+    const match = matchResumeToJD(jd.description_text, emp.resume_text, { jdKeywords });
     let stored = null;
     try { stored = emp.capability_match_detail ? JSON.parse(emp.capability_match_detail) : null; } catch (e) {}
     const flags = (stored && stored.flags && stored.flags.length) ? stored.flags : detectResumeFlags(emp.resume_text, jd.description_text, { pct: match.pct, matched: match.matched, missing: match.missing });
-    const body = { ...match, flags, hiringSignals: match.hiringSignals || match.matched };
+    const body = { ...match, jdId: emp.job_description_id, flags, hiringSignals: match.hiringSignals || match.matched };
     db.prepare('UPDATE users SET capability_match_pct = ?, capability_match_detail = ? WHERE id = ?').run(match.pct, JSON.stringify(body), emp.id);
     res.json(body);
   } catch (e) {
@@ -368,7 +491,7 @@ router.post('/employees/:id/auto-rate', uploadDoc.single('resume'), async (req, 
     if (!resumeText || !jobDescId) return res.status(400).json({ error: 'Need both JD and resume to auto-rate. Upload resume and select a JD.' });
     const jd = db.prepare('SELECT description_text, title FROM job_descriptions WHERE id = ?').get(jobDescId);
     if (!jd) return res.status(404).json({ error: 'Job description not found' });
-    const { pct, matched, missing, categories } = matchResumeToJD(jd.description_text, resumeText);
+    const { pct, matched, missing, categories } = matchResumeToJD(jd.description_text, resumeText, { jdKeywords: getActiveJDKeywords(jobDescId) });
     db.prepare('UPDATE users SET capability_match_pct = ?, capability_match_detail = ? WHERE id = ?').run(pct, JSON.stringify({ matched, missing, categories }), emp.id);
     const profile = db.prepare('SELECT life_path_number FROM numerology_profiles WHERE employee_id = ? AND dimension = ?').get(emp.id, 'candidate');
     const lifePath = profile ? profile.life_path_number : numer.nameNumber(emp.name);

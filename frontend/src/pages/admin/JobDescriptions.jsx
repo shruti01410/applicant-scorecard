@@ -1,15 +1,31 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Table, Button, Modal, Form, Input, Upload, Tag, Typography, Space, Select, message } from 'antd';
-import { UploadOutlined, FileTextOutlined } from '@ant-design/icons';
+import { UploadOutlined, FileTextOutlined, DeleteOutlined, ReloadOutlined, PlusOutlined, TagsOutlined } from '@ant-design/icons';
 import { api } from '../../services/api';
 
 const { Title, Text, Paragraph } = Typography;
+
+function SourceTag({ source }) {
+  return source === 'USER_ADDED'
+    ? <Tag color="gold" style={{ marginRight: 4, fontSize: 10, lineHeight: '16px' }}>+manual</Tag>
+    : <Tag color="blue" style={{ marginRight: 4, fontSize: 10, lineHeight: '16px' }}>auto</Tag>;
+}
+
+function KeywordChip({ kw, onRemove }) {
+  return (
+    <Tag closable onClose={() => onRemove(kw)} color="geekblue" style={{ fontSize: 12, padding: '3px 8px' }}>
+      <TagsOutlined /> {kw.keyword}
+      <SourceTag source={kw.source} />
+    </Tag>
+  );
+}
 
 export default function JobDescriptions() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [view, setView] = useState(null);
+  const [busy, setBusy] = useState(false);
   const [companies, setCompanies] = useState([]);
   const [form] = Form.useForm();
 
@@ -18,6 +34,12 @@ export default function JobDescriptions() {
     try { setRows(await api.get('/api/admin/job-descriptions')); } catch (e) { message.error(e.message); } finally { setLoading(false); }
   }
   useEffect(() => { fetchRows(); api.get('/api/admin/companies').then(setCompanies).catch(()=>{}); }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const jdId = params.get('jd');
+    if (jdId) openView(Number(jdId));
+  }, []);
 
   async function onCreate(values) {
     try {
@@ -36,7 +58,7 @@ export default function JobDescriptions() {
       } else {
         await api.post('/api/admin/job-descriptions', JSON.stringify({ title: values.title, client: values.client, company_id: values.company_id, description_text: values.description_text }));
       }
-      message.success('Job description created');
+      message.success('Job description created — keywords extracted');
       setOpen(false);
       form.resetFields();
       fetchRows();
@@ -47,12 +69,55 @@ export default function JobDescriptions() {
     try { const data = await api.get(`/api/admin/job-descriptions/${id}`); setView(data); } catch (e) { message.error(e.message); }
   }
 
+  async function refreshKeywords(data) {
+    if (!view || !view.id) return;
+    setView({ ...view, keywords: data.keywords });
+  }
+
+  async function removeKeyword(kw) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const data = await api.delete(`/api/admin/job-descriptions/${view.id}/keywords/${kw.id}`);
+      await refreshKeywords(data);
+      message.success(`Removed "${kw.keyword}"`);
+      fetchRows();
+    } catch (e) { message.error(e.message); } finally { setBusy(false); }
+  }
+
+  async function addKeyword(values) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const data = await api.post(`/api/admin/job-descriptions/${view.id}/keywords`, { keyword: values.keyword, mode: values.mode || 'required' });
+      await refreshKeywords(data);
+      message.success(`Added "${values.keyword}"`);
+      fetchRows();
+    } catch (e) { message.error(e.message); } finally { setBusy(false); }
+  }
+
+  async function resetKeywords() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const data = await api.post(`/api/admin/job-descriptions/${view.id}/keywords/reset`, {});
+      await refreshKeywords(data);
+      message.success('Restored automatically extracted keywords');
+      fetchRows();
+    } catch (e) { message.error(e.message); } finally { setBusy(false); }
+  }
+
+  const activeKeywords = (view?.keywords || []).filter(k => k.is_active);
+  const required = activeKeywords.filter(k => k.mode === 'required');
+  const preferred = activeKeywords.filter(k => k.mode === 'preferred');
+
   const columns = [
     { title: 'Title', dataIndex: 'title', render: (v, r) => <a onClick={() => openView(r.id)}>{v}</a> },
     { title: 'Client', dataIndex: 'client', render: v => v || '—' },
     { title: 'Company', dataIndex: 'company_id', render: v => v ? `Company #${v}` : '—' },
+    { title: 'Active keywords', dataIndex: 'keyword_count', render: v => <Tag color={v ? 'geekblue' : 'default'}>{v || 0}</Tag> },
     { title: 'Created', dataIndex: 'created_at', render: v => v ? new Date(v).toLocaleDateString() : '—' },
-    { title: 'Action', render: (_, r) => <Button size="small" onClick={() => openView(r.id)}>View</Button> },
+    { title: 'Action', render: (_, r) => <Button size="small" onClick={() => openView(r.id)}>Edit keywords</Button> },
   ];
 
   return (
@@ -61,6 +126,9 @@ export default function JobDescriptions() {
         <Title level={4} style={{ margin: 0 }}><FileTextOutlined /> Job Descriptions</Title>
         <Button type="primary" onClick={() => setOpen(true)}>+ Add JD</Button>
       </div>
+      <Text type="secondary" style={{ display: 'block', marginBottom: 16, fontSize: 13 }}>
+        Editable JD Intelligence — keywords are extracted from the JD, then you can add / remove them. The active set is what resume comparison uses.
+      </Text>
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} pagination={{ pageSize: 10 }} />
 
       <Modal title="Add Job Description" open={open} onCancel={() => setOpen(false)} footer={null} width={640}>
@@ -74,18 +142,46 @@ export default function JobDescriptions() {
         </Form>
       </Modal>
 
-      <Modal title={view ? view.title : 'JD'} open={!!view} onCancel={() => setView(null)} footer={null} width={700}>
+      <Modal title={view ? `JD Intelligence — ${view.title}` : 'JD'} open={!!view} onCancel={() => setView(null)} footer={null} width={760}>
         {view && (
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
-            <div><Text type="secondary">Client: </Text><Tag>{view.client || '—'}</Tag> {view.company_id && <Tag color="blue">Company #{view.company_id}{companies.find(c => c.id === view.company_id) ? ` · ${companies.find(c => c.id === view.company_id).client_name}` : ''}</Tag>} <Text type="secondary">{view.created_at}</Text></div>
-            <Paragraph style={{ whiteSpace: 'pre-wrap', background: '#fafafa', padding: 12, borderRadius: 6, maxHeight: 300, overflow: 'auto' }}>{view.description_text}</Paragraph>
             <div>
-              <Text strong>Extracted keywords ({view.requirements ? view.requirements.length : 0})</Text>
-              <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {(view.requirements || []).slice(0, 60).map(k => <Tag key={k}>{k}</Tag>)}
+              <Text type="secondary">Client: </Text><Tag>{view.client || '—'}</Tag>
+              {view.company_id && <Tag color="blue">Company #{view.company_id}</Tag>}
+              <Text type="secondary" style={{ marginLeft: 8 }}>{view.created_at}</Text>
+            </div>
+
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12 }}>
+              <Text strong>Required keywords ({required.length})</Text> <Text type="secondary" style={{ fontSize: 11 }}>— what resume comparison checks first</Text>
+              <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {required.length === 0 && <Text type="secondary">None</Text>}
+                {required.map(kw => <KeywordChip key={kw.id} kw={kw} onRemove={removeKeyword} />)}
               </div>
             </div>
-            {view.file_path && <Text type="secondary" style={{ fontSize: 11 }}>Stored: {view.file_path}</Text>}
+
+            <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: 12 }}>
+              <Text strong style={{ color: '#92400e' }}>Preferred keywords ({preferred.length})</Text>
+              <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {preferred.length === 0 && <Text type="secondary">None</Text>}
+                {preferred.map(kw => <KeywordChip key={kw.id} kw={kw} onRemove={removeKeyword} />)}
+              </div>
+            </div>
+
+            <Form layout="inline" onFinish={addKeyword} style={{ gap: 8, rowGap: 8 }}>
+              <Form.Item name="keyword" style={{ flex: 1, minWidth: 240, marginBottom: 0 }} rules={[{ required: true, message: ' ' }]}>
+                <Input placeholder="Add a keyword, e.g. Machine Learning" />
+              </Form.Item>
+              <Form.Item name="mode" initialValue="required" style={{ marginBottom: 0 }}>
+                <Select style={{ width: 130 }} options={[{ value: 'required', label: 'Required' }, { value: 'preferred', label: 'Preferred' }]} />
+              </Form.Item>
+              <Button type="primary" htmlType="submit" icon={<PlusOutlined />} loading={busy}>Add</Button>
+              <Button icon={<ReloadOutlined />} onClick={resetKeywords} loading={busy}>Restore auto-extracted</Button>
+            </Form>
+
+            <div style={{ borderTop: '1px dashed #dbe1ef', paddingTop: 10 }}>
+              <Text strong style={{ fontSize: 13 }}>Original JD text <Text type="secondary" style={{ fontWeight: 400 }}>(unedited — only the keyword set above drives matching)</Text></Text>
+              <Paragraph style={{ whiteSpace: 'pre-wrap', background: '#fafafa', padding: 12, borderRadius: 6, maxHeight: 220, overflow: 'auto', marginTop: 6 }}>{view.description_text}</Paragraph>
+            </div>
           </Space>
         )}
       </Modal>

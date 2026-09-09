@@ -508,17 +508,21 @@ router.post('/employees/:id/report', (req, res) => {
     dob = profile.date_of_birth;
     name = profile.numerology_name || profile.full_name || name;
   }
-  const user = db.prepare('SELECT resume_text FROM users WHERE id=?').get(emp.id);
+  const user = db.prepare('SELECT resume_text, job_description_id FROM users WHERE id=?').get(emp.id);
   const resumeText = user ? user.resume_text : null;
   const triNature = computeTriNature(name, dob, resumeText);
   const interview = (()=>{ try{ return generateInterviewPrep(emp.id); }catch(e){ return null; }})();
   let flags=[];
   try{
-    if (resumeText) {
-      const jd = user && user.job_description_id ? db.prepare('SELECT description_text FROM job_descriptions WHERE id=?').get(user.job_description_id) : null;
+if (resumeText) {
+      const jdRow = user && user.job_description_id ? db.prepare('SELECT description_text FROM job_descriptions WHERE id=?').get(user.job_description_id) : null;
       const { detectResumeFlags } = require('../resumeFlags');
-      const cap = jd ? require('../capabilityMatch').matchResumeToJD(jd.description_text, resumeText) : { pct:0 };
-      flags = detectResumeFlags(resumeText, jd?jd.description_text:'', cap);
+      const { matchResumeToJD } = require('../capabilityMatch');
+      const jdKeywords = user && user.job_description_id
+        ? db.prepare('SELECT keyword, mode FROM jd_keywords WHERE jd_id = ? AND is_active = 1 ORDER BY id').all(user.job_description_id)
+        : [];
+      const cap = jdRow ? matchResumeToJD(jdRow.description_text, resumeText, { jdKeywords }) : { pct: 0 };
+      flags = detectResumeFlags(resumeText, jdRow ? jdRow.description_text : '', cap);
     }
   }catch(e){}
   const sc = db.prepare('SELECT id FROM scorecards WHERE employee_id = ?').get(emp.id);
