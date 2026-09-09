@@ -8,6 +8,7 @@ import dayjs from 'dayjs';
 import { UploadOutlined, FileTextOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { api } from '../../services/api';
 import { badge, colorFor } from '../../scoreLabels';
+import { validateResumeFileClient } from '../../services/resumeCheck';
 import NumerologyTab from './numerology/NumerologyTab';
 
 const { Title, Text } = Typography;
@@ -257,7 +258,7 @@ export default function ScorePage() {
               </div>
               <Space wrap style={{ marginTop:10 }}>
                 <Select placeholder="Link different JD" style={{ minWidth: 220 }} allowClear value={selectedJd} onChange={setSelectedJd} options={jds.map(j => ({ value: j.id, label: `${j.title}${j.client ? ` · ${j.client}` : ''}` }))} />
-                <Upload beforeUpload={file => { setResumeFile(file); return false; }} maxCount={1} accept=".pdf,.docx"><Button icon={<UploadOutlined />}>{resumeFile ? resumeFile.name : 'New resume'}</Button></Upload>
+                <Upload beforeUpload={file => { const r = validateResumeFileClient(file); if (!r.ok) { message.error(r.message); return Upload.LIST_IGNORE; } setResumeFile(file); return false; }} maxCount={1} accept=".pdf,.doc,.docx"><Button icon={<UploadOutlined />}>{resumeFile ? resumeFile.name : 'New resume'}</Button></Upload>
                 <Button loading={capLoading} onClick={handleResumeUpload}>Re-upload & Re-match</Button>
                 <Button type="primary" loading={capLoading} onClick={handleAutoRate}>Auto-rate 23 parameters</Button>
               </Space>
@@ -267,7 +268,7 @@ export default function ScorePage() {
               <Text type="secondary" style={{ fontSize: 12 }}>{capability && capability.message ? capability.message : 'Link a JD and upload a resume to see a transparent keyword match.'}</Text>
               <Space wrap style={{ marginTop: 10, width: '100%' }}>
                 <Select placeholder="Select JD" style={{ minWidth: 220 }} allowClear value={selectedJd} onChange={setSelectedJd} options={jds.map(j => ({ value: j.id, label: `${j.title}${j.client ? ` · ${j.client}` : ''}` }))} />
-                <Upload beforeUpload={file => { setResumeFile(file); return false; }} maxCount={1} accept=".pdf,.docx"><Button icon={<UploadOutlined />}>{resumeFile ? resumeFile.name : 'Select resume PDF/DOCX'}</Button></Upload>
+                <Upload beforeUpload={file => { const r = validateResumeFileClient(file); if (!r.ok) { message.error(r.message); return Upload.LIST_IGNORE; } setResumeFile(file); return false; }} maxCount={1} accept=".pdf,.doc,.docx"><Button icon={<UploadOutlined />}>{resumeFile ? resumeFile.name : 'Select resume PDF/DOC/DOCX'}</Button></Upload>
                 <Button loading={capLoading} onClick={handleResumeUpload}>Upload & Match</Button>
                 <Button type="primary" loading={capLoading} onClick={handleAutoRate}>Auto-rate 23 parameters</Button>
               </Space>

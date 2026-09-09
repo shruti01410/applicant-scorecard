@@ -1,6 +1,9 @@
 const pdfParseMod = require('pdf-parse');
 const mammoth = require('mammoth');
 
+let WordExtractor = null;
+try { WordExtractor = require('word-extractor'); } catch (e) {}
+
 async function parsePdf(buffer) {
   if (pdfParseMod.PDFParse) {
     const parser = new pdfParseMod.PDFParse({ data: buffer });
@@ -29,16 +32,25 @@ async function extractText(buffer, originalname) {
       const text = await parsePdf(buffer);
       if (text && text.trim()) return text;
     } catch (e) {}
-    return buffer.toString('utf8');
+    return '';
   }
   if (ext === 'docx') {
     try {
       const result = await mammoth.extractRawText({ buffer });
       if (result.value && result.value.trim()) return result.value;
     } catch (e) {}
-    return buffer.toString('utf8');
+    return '';
   }
-  throw new Error(`Unsupported file type: .${ext} — please upload PDF or DOCX`);
+  if (ext === 'doc') {
+    if (!WordExtractor) throw new Error('DOC format requires word-extractor — please convert to PDF or DOCX');
+    try {
+      const doc = new WordExtractor();
+      const extracted = await doc.extract(buffer);
+      if (extracted && extracted.text && extracted.text.trim()) return extracted.text;
+    } catch (e) {}
+    return '';
+  }
+  throw new Error(`Unsupported file type: .${ext} — please upload PDF, DOC, or DOCX`);
 }
 
 module.exports = { extractText };

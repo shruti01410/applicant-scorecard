@@ -13,6 +13,7 @@ const jdValidation = require('../jdValidation');
 const { autoRateParameters } = require('../autoRate');
 const { detectResumeFlags } = require('../resumeFlags');
 const numer = require('../numerologyUtils');
+const resumeValidation = require('../resumeValidation');
 
 const router = express.Router();
 router.use(authenticate, requireRole('admin'));
@@ -24,8 +25,8 @@ const uploadDoc = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    const ok = ['.pdf', '.docx'].includes(ext);
-    cb(ok ? null : new Error('Only PDF/DOCX accepted (10MB max)'), ok);
+    const ok = ['.pdf', '.doc', '.docx'].includes(ext);
+    cb(ok ? null : new Error('Only PDF/DOC/DOCX accepted (10MB max)'), ok);
   },
 });
 
@@ -455,6 +456,11 @@ router.post('/employees', uploadDoc.fields([{ name: 'resume', maxCount: 1 }, { n
     let resume_file_path = null;
     let resume_text = null;
     if (resumeFile) {
+      const resumeResult = await resumeValidation.validateResume(resumeFile.buffer, resumeFile.originalname);
+      if (!resumeResult.valid) {
+        resumeValidation.logRejection(resumeFile, resumeResult);
+        return res.status(400).json({ error: resumeResult.message });
+      }
       resume_text = await extractText(resumeFile.buffer, resumeFile.originalname);
       resume_file_path = saveBuffer(resumeFile.buffer, resumeFile.originalname, 'resumes');
     }
@@ -511,6 +517,11 @@ router.post('/employees/:id/resume', uploadDoc.single('resume'), async (req, res
     const emp = db.prepare('SELECT id FROM users WHERE id = ? AND role = ?').get(req.params.id, 'employee');
     if (!emp) return res.status(404).json({ error: 'Employee not found' });
     if (!req.file) return res.status(400).json({ error: 'No resume file uploaded' });
+    const resumeResult = await resumeValidation.validateResume(req.file.buffer, req.file.originalname);
+    if (!resumeResult.valid) {
+      resumeValidation.logRejection(req.file, resumeResult);
+      return res.status(400).json({ error: resumeResult.message });
+    }
     const job_description_id = req.body.job_description_id ? Number(req.body.job_description_id) : null;
     const resume_text = await extractText(req.file.buffer, req.file.originalname);
     const resume_file_path = saveBuffer(req.file.buffer, req.file.originalname, 'resumes');
@@ -559,6 +570,11 @@ router.post('/employees/:id/auto-rate', uploadDoc.single('resume'), async (req, 
     let jobDescId = req.body.job_description_id ? Number(req.body.job_description_id) : emp.job_description_id;
     const position = String(req.body.position || req.body.role || '').trim();
     if (req.file) {
+      const resumeResult = await resumeValidation.validateResume(req.file.buffer, req.file.originalname);
+      if (!resumeResult.valid) {
+        resumeValidation.logRejection(req.file, resumeResult);
+        return res.status(400).json({ error: resumeResult.message });
+      }
       resumeText = await extractText(req.file.buffer, req.file.originalname);
       const fp = saveBuffer(req.file.buffer, req.file.originalname, 'resumes');
       db.prepare('UPDATE users SET resume_text = ?, resume_file_path = ? WHERE id = ?').run(resumeText, fp, emp.id);
@@ -739,6 +755,14 @@ router.post('/upload-excel', upload.single('file'), (req, res) => {
     created,
     message: `${updated} record(s) updated. ${created} new employee(s) created from Excel.`,
   });
+});
+
+// Catch multer errors (file type rejected, too large) and return 400
+router.use((err, req, res, next) => {
+  if (err && err.message && (err.message.includes('Only PDF') || err.message.includes('10MB') || err.code === 'LIMIT_FILE_SIZE' || err.message.includes('Unexpected field'))) {
+    return res.status(400).json({ error: err.message });
+  }
+  next(err);
 });
 
 module.exports = router;

@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom';
 import { UploadOutlined, PlusOutlined, FileTextOutlined, StarOutlined, StarFilled, DeleteOutlined, InboxOutlined, UndoOutlined } from '@ant-design/icons';
 import { api } from '../../services/api';
 import { badge } from '../../scoreLabels';
+import { validateResumeFileClient } from '../../services/resumeCheck';
 
 const { Title } = Typography;
 
@@ -246,7 +247,7 @@ export default function ScoresPage() {
               <Form.Item name="jd_file" valuePropName="file"><Upload beforeUpload={() => false} maxCount={1} accept=".pdf,.docx"><Button icon={<UploadOutlined />} block>Select JD file</Button></Upload></Form.Item>
             </div>
             <div className="upload-column">
-              <Form.Item name="resume" label="Resume (PDF/DOCX, 10MB)" valuePropName="file"><Upload beforeUpload={() => false} maxCount={1} accept=".pdf,.docx"><Button icon={<UploadOutlined />} block>Select resume file</Button></Upload></Form.Item>
+              <Form.Item name="resume" label="Resume (PDF/DOC/DOCX, 10MB)" valuePropName="file"><Upload beforeUpload={(file) => { const r = validateResumeFileClient(file); if (!r.ok) { message.error(r.message); return Upload.LIST_IGNORE; } return false; }} maxCount={1} accept=".pdf,.doc,.docx"><Button icon={<UploadOutlined />} block>Select resume file</Button></Upload></Form.Item>
             </div>
           </div>
           <div style={{ fontSize: 11, color: '#9aa0a6', marginBottom: 12 }}><FileTextOutlined /> Upload JD + resume to calculate Capability Match and auto-rate parameters.</div>
