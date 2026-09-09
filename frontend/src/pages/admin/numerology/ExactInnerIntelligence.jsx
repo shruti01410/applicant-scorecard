@@ -442,7 +442,8 @@ function IntroScreen({ onStart }) {
    Screen 2 — Date of birth
 --------------------------------------------------------- */
 
-function DateScreen({ name, setName, dob, setDob, onContinue, onSkip, saving }) {
+function DateScreen({ name, setName, dob, hasDob, onContinue, onSkip, saving }) {
+  const dobDisplay = dob ? new Date(dob + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }) : null;
   return (
     <div className="ii-dark-screen" style={{
       width: "100%", minHeight: "100dvh", boxSizing: "border-box", background: "radial-gradient(120% 90% at 50% -10%, #16204a 0%, #070b18 55%, #05070f 100%)",
@@ -461,7 +462,7 @@ function DateScreen({ name, setName, dob, setDob, onContinue, onSkip, saving }) 
         </div>
         <h2 style={{ fontSize: 21, fontWeight: 700, margin: "0 0 6px" }}>When were they born?</h2>
         <p style={{ fontSize: 13.5, color: "#ffffff", opacity: 0.75, lineHeight: 1.55, margin: "0 0 24px" }}>
-          Date of birth unlocks the full behavioral profile. Skip it and you'll only see a
+          Date of birth is set in Add Candidate. Without it you'll only see a
           name-only preview.
         </p>
 
@@ -477,17 +478,26 @@ function DateScreen({ name, setName, dob, setDob, onContinue, onSkip, saving }) 
         />
 
         <label style={{ fontSize: 12, color: "#ffffff", opacity: 0.65, display: "block", marginBottom: 6 }}>Date of birth</label>
-        <input
-          type="date" value={dob} onChange={(e) => setDob(e.target.value)}
-          style={{
+        {hasDob && dob ? (
+          <div style={{
             width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.05)",
             border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "11px 13px",
-            color: "#fff", fontSize: 14.5, marginBottom: 24, outline: "none", colorScheme: "dark",
-          }}
-        />
+            color: "#fff", fontSize: 14.5, marginBottom: 8,
+          }}>
+            {dobDisplay}
+          </div>
+        ) : (
+          <div style={{
+            width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "11px 13px",
+            color: "#e8b653", fontSize: 13, lineHeight: 1.5, marginBottom: 8,
+          }}>
+            Date of Birth is not available. Please update the candidate's Date of Birth in Add Candidate.
+          </div>
+        )}
 
         <button
-          onClick={onContinue}
+          onClick={hasDob ? onContinue : onSkip}
           disabled={!name.trim() || saving}
           style={{
             width: "100%", background: name.trim() && !saving ? "#3d5df0" : "rgba(61,93,240,0.35)", color: "#fff",
@@ -495,18 +505,20 @@ function DateScreen({ name, setName, dob, setDob, onContinue, onSkip, saving }) 
             cursor: name.trim() && !saving ? "pointer" : "not-allowed", marginBottom: 12,
           }}
         >
-          {saving ? "Saving & computing…" : "Save & continue"}
+          {saving ? "Saving & computing…" : (hasDob ? "Save & continue" : "Continue — preview only")}
         </button>
-        <button
-          onClick={onSkip}
-          disabled={saving}
-          style={{
-            width: "100%", background: "transparent", color: "#ffffff", opacity: 0.7, border: "none",
-            fontSize: 13.5, cursor: saving ? "not-allowed" : "pointer", padding: "6px",
-          }}
-        >
-          Skip for now
-        </button>
+        {hasDob && (
+          <button
+            onClick={onSkip}
+            disabled={saving}
+            style={{
+              width: "100%", background: "transparent", color: "#ffffff", opacity: 0.7, border: "none",
+              fontSize: 13.5, cursor: saving ? "not-allowed" : "pointer", padding: "6px",
+            }}
+          >
+            Skip for now
+          </button>
+        )}
       </div>
     </div>
   );
@@ -575,14 +587,14 @@ function FilledScreen({ name, dob, hasDob, onOpenReport, onBack }) {
         </div>
 
         {!hasDob && (
-          <button onClick={onBack} style={{
-            width: "100%", background: "rgba(255,255,255,0.08)", color: "#ffffff",
-            border: "1px solid rgba(255,255,255,0.12)", padding: "10px", borderRadius: 10,
-            fontSize: 13, cursor: "pointer", marginBottom: 12, display: "flex", alignItems: "center",
-            justifyContent: "center", gap: 6,
+          <div style={{
+            width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(255,255,255,0.1)", padding: "10px 12px", borderRadius: 10,
+            fontSize: 12.5, color: "#e8b653", lineHeight: 1.5, marginBottom: 12,
           }}>
-            <Calendar size={14} /> Add date of birth
-          </button>
+            <Calendar size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} />
+            Date of Birth is not available. Please update the candidate's Date of Birth in Add Candidate.
+          </div>
         )}
 
         <button onClick={onOpenReport} style={{
@@ -826,13 +838,9 @@ function ReportScreen({ name, hasDob, scoreValue, cards, onBack, onUnlock }) {
         {!hasDob && (
           <div style={{
             background: "#fff8ef", border: "1px solid #f2e2c4", borderRadius: 12, padding: "14px 16px",
-            display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, gap: 12,
+            fontSize: 13, color: "#7a5c14", marginBottom: 20, lineHeight: 1.5,
           }}>
-            <div style={{ fontSize: 13, color: "#7a5c14" }}>Add a date of birth to unlock the full profile — this is a name-only preview.</div>
-            <button onClick={onUnlock} style={{
-              background: "#3d5df0", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px",
-              fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
-            }}>Add date</button>
+            Date of Birth is not available. Please update the candidate's Date of Birth in Add Candidate. This is a name-only preview.
           </div>
         )}
 
@@ -1005,8 +1013,12 @@ export default function ExactInnerIntelligence({ employeeId }) {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      await api.post(`/api/admin/employees/${employeeId}/numerology`, JSON.stringify({ date_of_birth: dob, numerology_name: name.trim() }));
-      setHasDob(!!dob);
+      if (dob) {
+        await api.post(`/api/admin/employees/${employeeId}/numerology`, JSON.stringify({ date_of_birth: dob, numerology_name: name.trim() }));
+        setHasDob(true);
+      } else {
+        setHasDob(false);
+      }
       await loadAll();
       setStep("loading");
     } catch (e) {
@@ -1092,7 +1104,7 @@ export default function ExactInnerIntelligence({ employeeId }) {
 
       {step === "date" && (
         <DateScreen
-          name={name} setName={setName} dob={dob} setDob={setDob} saving={saving}
+          name={name} setName={setName} dob={dob} hasDob={hasDob} saving={saving}
           onContinue={handleContinue}
           onSkip={() => { setHasDob(false); setStep("loading"); }}
         />

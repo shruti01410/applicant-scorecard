@@ -37,9 +37,20 @@ function archetypeFor(number) {
 }
 
 function getProfile(employeeId) {
-  return db.prepare(
+  let profile = db.prepare(
     'SELECT * FROM numerology_profiles WHERE employee_id = ? AND dimension = ?'
   ).get(employeeId, 'candidate');
+  const u = db.prepare('SELECT date_of_birth, name FROM users WHERE id = ?').get(employeeId);
+  if (u && u.date_of_birth) {
+    const stale = !profile || profile.date_of_birth !== u.date_of_birth;
+    if (stale) {
+      try {
+        const name = profile ? (profile.numerology_name || profile.full_name || u.name) : u.name;
+        profile = computeAndStoreProfile(employeeId, u.date_of_birth, name);
+      } catch (e) {}
+    }
+  }
+  return profile;
 }
 
 function computeAndStoreProfile(employeeId, isoDob, numerologyName) {
@@ -250,6 +261,7 @@ router.post('/employees/:id/numerology', (req, res) => {
     return res.status(400).json({ error: 'date_of_birth must be YYYY-MM-DD' });
   }
   try {
+    db.prepare('UPDATE users SET date_of_birth = ? WHERE id = ?').run(dob, emp.id);
     const profile = computeAndStoreProfile(emp.id, dob, numerology_name);
     res.json(profile);
   } catch (e) {

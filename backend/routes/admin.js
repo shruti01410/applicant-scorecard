@@ -406,6 +406,18 @@ router.post('/employees', uploadDoc.fields([{ name: 'resume', maxCount: 1 }, { n
     const position = String(req.body.position || req.body.role || '').trim();
     const client = String(req.body.client || '').trim();
     if (!name || !email) return res.status(400).json({ error: 'name and email are required' });
+    const dob = String(req.body.date_of_birth || '').trim();
+    if (!dob) return res.status(400).json({ error: 'Date of Birth is required.' });
+    const dobDate = (() => {
+      const m = /^\d{4}-\d{2}-\d{2}$/.exec(dob);
+      if (!m) return null;
+      const [ry, rm, rd] = dob.split('-').map(Number);
+      const dt = new Date(ry, rm - 1, rd);
+      return dt.getFullYear() === ry && dt.getMonth() === rm - 1 && dt.getDate() === rd ? dt : null;
+    })();
+    const dobValid = dobDate !== null;
+    if (!dobValid) return res.status(400).json({ error: 'Date of Birth must be a valid date (YYYY-MM-DD).' });
+    if (dobDate > new Date()) return res.status(400).json({ error: 'Date of Birth cannot be in the future.' });
     const exists = db.prepare('SELECT id FROM users WHERE email = ? OR name = ?').get(email, name);
     if (exists) return res.status(409).json({ error: 'Candidate already exists' });
 
@@ -447,9 +459,9 @@ router.post('/employees', uploadDoc.fields([{ name: 'resume', maxCount: 1 }, { n
       resume_file_path = saveBuffer(resumeFile.buffer, resumeFile.originalname, 'resumes');
     }
 
-    const insert = db.prepare('INSERT INTO users (username, password, role, name, email, job_description_id, resume_file_path, resume_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-    insert.run(username, bcrypt.hashSync('12345', 10), 'employee', name, email, job_description_id, resume_file_path, resume_text);
-    const user = db.prepare('SELECT id, name, email, job_description_id, capability_match_pct FROM users WHERE email = ?').get(email);
+    const insert = db.prepare('INSERT INTO users (username, password, role, name, email, date_of_birth, job_description_id, resume_file_path, resume_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    insert.run(username, bcrypt.hashSync('12345', 10), 'employee', name, email, dob, job_description_id, resume_file_path, resume_text);
+    const user = db.prepare('SELECT id, name, email, date_of_birth, job_description_id, capability_match_pct FROM users WHERE email = ?').get(email);
 
     let autoScores = null;
     if (resume_text && job_description_id) {
@@ -459,7 +471,7 @@ router.post('/employees', uploadDoc.fields([{ name: 'resume', maxCount: 1 }, { n
         db.prepare('UPDATE users SET capability_match_pct = ?, capability_match_detail = ? WHERE id = ?').run(pct, JSON.stringify({ matched, missing, categories }), user.id);
         user.capability_match_pct = pct;
         const numerologyProfile = db.prepare('SELECT life_path_number FROM numerology_profiles WHERE employee_id = ? AND dimension = ?').get(user.id, 'candidate');
-        const lifePath = numerologyProfile ? numerologyProfile.life_path_number : null;
+        const lifePath = numerologyProfile ? numerologyProfile.life_path_number : (dob ? numer.lifePathNumber(dob) : null);
         autoScores = autoRateParameters({ jdText: jd.description_text, resumeText: resume_text, candidateName: name, jobTitle: position || jd.title, lifePath });
         const targetClient = client || jd.client || null;
         const targetPosition = position || jd.title || null;

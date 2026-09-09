@@ -138,6 +138,7 @@ try {
   if (!uCols.includes('capability_match_detail')) db.exec(`ALTER TABLE users ADD COLUMN capability_match_detail TEXT`);
   if (!uCols.includes('is_favorite')) db.exec(`ALTER TABLE users ADD COLUMN is_favorite INTEGER DEFAULT 0`);
   if (!uCols.includes('is_archived')) db.exec(`ALTER TABLE users ADD COLUMN is_archived INTEGER DEFAULT 0`);
+  if (!uCols.includes('date_of_birth')) db.exec(`ALTER TABLE users ADD COLUMN date_of_birth TEXT`);
 } catch (e) {}
 
 try {

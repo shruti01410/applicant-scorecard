@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
-  Typography, Table, Button, Input, Space, Tag, Modal, Form, message, Card, Select, Upload, Popconfirm, Segmented, Dropdown,
+  Typography, Table, Button, Input, Space, Tag, Modal, Form, message, Card, Select, Upload, Popconfirm, Segmented, Dropdown, DatePicker,
 } from 'antd';
 import { Link } from 'react-router-dom';
 import { UploadOutlined, PlusOutlined, FileTextOutlined, StarOutlined, StarFilled, DeleteOutlined, InboxOutlined, UndoOutlined } from '@ant-design/icons';
@@ -106,11 +106,13 @@ export default function ScoresPage() {
     try {
       const hasResume = values.resume && values.resume.fileList && values.resume.fileList[0];
       const hasJdFile = values.jd_file && values.jd_file.fileList && values.jd_file.fileList[0];
+      const dobIso = values.date_of_birth ? values.date_of_birth.format('YYYY-MM-DD') : '';
       let resp;
       if (hasResume || hasJdFile) {
         const fd = new FormData();
         fd.append('name', values.name);
         fd.append('email', values.email);
+        fd.append('date_of_birth', dobIso);
         if (values.job_description_id) fd.append('job_description_id', values.job_description_id);
         if (values.position) fd.append('position', values.position);
         if (values.client) fd.append('client', values.client);
@@ -118,7 +120,7 @@ export default function ScoresPage() {
         if (hasJdFile) fd.append('jd_file', values.jd_file.fileList[0].originFileObj);
         resp = await api.post('/api/admin/employees', fd);
       } else {
-        resp = await api.post('/api/admin/employees', JSON.stringify({ name: values.name, email: values.email, job_description_id: values.job_description_id || null, position: values.position || null, client: values.client || null }));
+        resp = await api.post('/api/admin/employees', JSON.stringify({ name: values.name, email: values.email, date_of_birth: dobIso, job_description_id: values.job_description_id || null, position: values.position || null, client: values.client || null }));
       }
       if (resp && resp.auto_rated) message.success(`Candidate added — 23 parameters auto-rated from JD/Resume (match ${resp.capability_match_pct}%)`);
       else message.success('Candidate added');
@@ -235,6 +237,7 @@ export default function ScoresPage() {
         <Form form={addForm} layout="vertical" onFinish={onAddCandidates}>
           <Form.Item name="name" label="Name" rules={[{ required: true, message: 'Required' }]}><Input placeholder="Full name" /></Form.Item>
           <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email', message: 'Valid email required' }]}><Input placeholder="Email" /></Form.Item>
+          <Form.Item name="date_of_birth" label="Date of Birth *" rules={[{ required: true, message: 'Date of Birth is required.' }]}><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="DD/MM/YYYY" disabledDate={(d) => d && d.isAfter(new Date())} /></Form.Item>
           <Form.Item name="position" label="Role / Position"><Input placeholder="Senior Accounts Payable" /></Form.Item>
           <Form.Item name="client" label="Client"><Input placeholder="iSHR" /></Form.Item>
           <Form.Item name="job_description_id" label="Job Description (optional)"><Select placeholder="Select existing JD — or upload new below" allowClear options={jds.map(j => ({ value: j.id, label: `${j.title}${j.client ? ` · ${j.client}` : ''}` }))} /></Form.Item>

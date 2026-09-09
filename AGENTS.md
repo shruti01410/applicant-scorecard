@@ -118,6 +118,16 @@ with `npm run build` in `frontend/`; backend behavior is verified by starting th
   `narrative_snapshot`. `generateInterviewPrep()` ties 3 prompts to the LOWEST-scored role-fit
   parameter. No LLM calls.
 - **Match-vs-role** reuses normal scorecard `scores`, mapped to `role_fit = round(score/5*100)`.
+- **DOB single source of truth = `users.date_of_birth`** (`ALTER TABLE` migration in
+  `database.js`). Add Candidate (`POST /employees`) requires it (`400 "Date of Birth is required."`,
+  YYYY-MM-DD, must be a valid past date) and persists it on the `users` row. `getProfile()` in
+  `routes/numerology.js` lazily syncs `numerology_profiles` from `users.date_of_birth`, so Inner
+  Intelligence auto-fills DOB read-only from the stored value — no DOB entry screen. Legacy profiles
+  (DOB manually entered before this column existed) still work when `users.date_of_birth` is NULL.
+  `POST /employees/:id/numerology` now also writes `users.date_of_birth` to keep one source of truth.
+  Candidates without a DOB show "Date of Birth is not available. Please update the candidate's Date
+  of Birth in Add Candidate." — never a fake/default date. Note: Excel bulk import does NOT require
+  DOB (existing sheets/seeds have none); such candidates just get the not-available message.
 
 ## API Endpoints
 
@@ -126,7 +136,7 @@ with `npm run build` in `frontend/`; backend behavior is verified by starting th
 | POST | `/api/auth/login` | none | Login -> `{token, user}` |
 | GET | `/api/admin/parameters` | admin | 23 weighted parameters |
 | GET | `/api/admin/employees?search=` | admin | List candidates + scorecard summary |
-| POST | `/api/admin/employees` | admin | Add a candidate `{name, email}` |
+| POST | `/api/admin/employees` | admin | Add a candidate `{name, email, date_of_birth}` (DOB required, YYYY-MM-DD) |
 | GET | `/api/admin/employees/:id/scorecard` | admin | Load a candidate's scorecard + scores |
 | POST | `/api/admin/employees/:id/scorecard` | admin | Create/update a scorecard |
 | POST | `/api/admin/upload-excel` | admin | Bulk import candidates (multipart `file`, .xlsx/.xls) |
@@ -145,7 +155,8 @@ Inner Intelligence (all admin-only and gated by `ENABLE_INNER_INTELLIGENCE=true`
 | GET | `/api/admin/company-numerology` | Org profile row (first in `company_numerology_profiles`) |
 | GET | `/api/admin/employees/numerology/compare?ids=3,2` | Multi-candidate compare (theme, archetype, personal year) |
 
-Employee rows shape: `{id, applicant_name, email, client, position, weighted_pct, scorecard_id, updated_at_history[]}`.
+Employee rows shape: `{id, applicant_name, email, client, position, weighted_pct, scorecard_id, updated_at_history[]}` (scorecard edit payload adds scores + `date_of_birth`).
+Create-candidate payload: `{name, email, date_of_birth (required, YYYY-MM-DD), position?, client?, job_description_id?, resume?, jd_file?}`.
 
 ## Environment
 
