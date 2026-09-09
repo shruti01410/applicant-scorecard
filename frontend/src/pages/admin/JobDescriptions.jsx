@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Table, Button, Modal, Form, Input, Upload, Tag, Typography, Space, Select, message } from 'antd';
-import { UploadOutlined, FileTextOutlined, DeleteOutlined, ReloadOutlined, PlusOutlined, TagsOutlined } from '@ant-design/icons';
+import { UploadOutlined, FileTextOutlined, DeleteOutlined, ReloadOutlined, PlusOutlined, TagsOutlined, SaveOutlined } from '@ant-design/icons';
 import { api } from '../../services/api';
 
-const { Title, Text, Paragraph } = Typography;
+const { Title, Text } = Typography;
 
 function SourceTag({ source }) {
   return source === 'USER_ADDED'
@@ -25,6 +25,7 @@ export default function JobDescriptions() {
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [view, setView] = useState(null);
+  const [descDraft, setDescDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [companies, setCompanies] = useState([]);
   const [form] = Form.useForm();
@@ -66,7 +67,11 @@ export default function JobDescriptions() {
   }
 
   async function openView(id) {
-    try { const data = await api.get(`/api/admin/job-descriptions/${id}`); setView(data); } catch (e) { message.error(e.message); }
+    try {
+      const data = await api.get(`/api/admin/job-descriptions/${id}`);
+      setView(data);
+      setDescDraft(data.description_text);
+    } catch (e) { message.error(e.message); }
   }
 
   async function refreshKeywords(data) {
@@ -107,6 +112,24 @@ export default function JobDescriptions() {
     } catch (e) { message.error(e.message); } finally { setBusy(false); }
   }
 
+  async function saveText() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await api.put(`/api/admin/job-descriptions/${view.id}`, {
+        title: view.title,
+        client: view.client,
+        company_id: view.company_id,
+        description_text: descDraft,
+      });
+      const data = await api.get(`/api/admin/job-descriptions/${view.id}`);
+      setView(data);
+      setDescDraft(data.description_text);
+      message.success('JD text saved — newly extracted keywords were added to the set');
+      fetchRows();
+    } catch (e) { message.error(e.message); } finally { setBusy(false); }
+  }
+
   const activeKeywords = (view?.keywords || []).filter(k => k.is_active);
   const required = activeKeywords.filter(k => k.mode === 'required');
   const preferred = activeKeywords.filter(k => k.mode === 'preferred');
@@ -127,7 +150,7 @@ export default function JobDescriptions() {
         <Button type="primary" onClick={() => setOpen(true)}>+ Add JD</Button>
       </div>
       <Text type="secondary" style={{ display: 'block', marginBottom: 16, fontSize: 13 }}>
-        Editable JD Intelligence — keywords are extracted from the JD, then you can add / remove them. The active set is what resume comparison uses.
+        Editable JD Intelligence — edit the JD text or the keyword set itself. Keywords are extracted from the JD, you can add / remove them, and the active set is what resume comparison uses.
       </Text>
       <Table rowKey="id" columns={columns} dataSource={rows} loading={loading} pagination={{ pageSize: 10 }} />
 
@@ -179,8 +202,16 @@ export default function JobDescriptions() {
             </Form>
 
             <div style={{ borderTop: '1px dashed #dbe1ef', paddingTop: 10 }}>
-              <Text strong style={{ fontSize: 13 }}>Original JD text <Text type="secondary" style={{ fontWeight: 400 }}>(unedited — only the keyword set above drives matching)</Text></Text>
-              <Paragraph style={{ whiteSpace: 'pre-wrap', background: '#fafafa', padding: 12, borderRadius: 6, maxHeight: 220, overflow: 'auto', marginTop: 6 }}>{view.description_text}</Paragraph>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                <Text strong style={{ fontSize: 13 }}>JD text <Text type="secondary" style={{ fontWeight: 400, fontSize: 12 }}>— editing re-extracts keywords and adds any new ones to the set below</Text></Text>
+                <Button type="primary" size="small" icon={<SaveOutlined />} loading={busy} disabled={descDraft === view.description_text} onClick={saveText}>Save JD text</Button>
+              </div>
+              <Input.TextArea
+                value={descDraft}
+                onChange={(e) => setDescDraft(e.target.value)}
+                rows={8}
+                style={{ marginTop: 6, fontFamily: 'monospace', fontSize: 12 }}
+              />
             </div>
           </Space>
         )}
