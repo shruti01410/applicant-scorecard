@@ -243,10 +243,10 @@ export default function ScoresPage() {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="job_description_id" label="Job Description"><Select placeholder="Select existing JD — or upload new below" allowClear options={jds.map(j => ({ value: j.id, label: `${j.title}${j.client ? ` · ${j.client}` : ''}` }))} /></Form.Item>
-              <Form.Item name="jd_file" label="Upload new JD PDF/DOCX (creates JD on the fly)" valuePropName="file"><Upload beforeUpload={() => false} maxCount={1} accept=".pdf,.docx"><Button icon={<UploadOutlined />}>Upload JD</Button></Upload></Form.Item>
+              <Form.Item name="jd_file" label={<span style={{ color: '#dc2626' }}>Or upload new JD PDF/DOCX (creates JD on the fly)</span>} valuePropName="file"><Upload beforeUpload={() => false} maxCount={1} accept=".pdf,.docx"><Button icon={<UploadOutlined />}>Upload JD</Button></Upload></Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="resume" label="Resume (PDF/DOCX)" valuePropName="file"><Upload beforeUpload={() => false} maxCount={1} accept=".pdf,.docx"><Button icon={<UploadOutlined />}>Upload Resume</Button></Upload></Form.Item>
+              <Form.Item name="resume" label={<span style={{ color: '#16a34a' }}>Resume (PDF/DOCX, 10MB)</span>} valuePropName="file"><Upload beforeUpload={() => false} maxCount={1} accept=".pdf,.docx"><Button icon={<UploadOutlined />}>Upload Resume</Button></Upload></Form.Item>
             </Col>
           </Row>
           <div style={{ fontSize: 11, color: '#9aa0a6', marginBottom: 12 }}><FileTextOutlined /> Upload JD PDF + resume together → JD is created, Capability Match % computed, and the <b>23 parameters are auto-rated</b> (role + numerology aware, editable). Or pick an existing JD.</div>
