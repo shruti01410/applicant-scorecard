@@ -258,10 +258,12 @@ function PieChart({ data, size = 170 }) {
   );
 }
 
-function LineChart({ data, width = 340, height = 200 }) {
+function LineChart({ data }) {
+  const width = 680;
+  const height = 220;
   const padTop = 28;
-  const padBottom = 48;
-  const padSide = 28;
+  const padBottom = 56;
+  const padSide = 30;
   const maxVal = 5;
   const stepX = (width - 2 * padSide) / (data.length - 1 || 1);
   const points = data.map((d, i) => ({
@@ -272,7 +274,7 @@ function LineChart({ data, width = 340, height = 200 }) {
 
   function wrapLabel(label) {
     const words = label.split(" ");
-    if (words.length <= 2) return [label];
+    if (words.length <= 1) return [label];
     const mid = Math.ceil(words.length / 2);
     return [words.slice(0, mid).join(" "), words.slice(mid).join(" ")];
   }
@@ -281,7 +283,7 @@ function LineChart({ data, width = 340, height = 200 }) {
   const lh = fs + 2;
 
   return (
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: "block" }}>
+    <svg width="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet" style={{ display: "block" }}>
       {[1, 2, 3, 4, 5].map((v) => {
         const y = padTop + (1 - v / maxVal) * (height - padTop - padBottom);
         return <line key={v} x1={padSide} y1={y} x2={width - padSide} y2={y} stroke="#eef0f7" strokeWidth={1} />;
@@ -289,7 +291,8 @@ function LineChart({ data, width = 340, height = 200 }) {
       <path d={pathD} fill="none" stroke="#3d5df0" strokeWidth={2.5} />
       {points.map((p, i) => {
         const lines = wrapLabel(data[i].label);
-        const labelY = height - padBottom + 10;
+        const isOdd = i % 2 === 1;
+        const labelY = isOdd ? height - padBottom + 10 + lh + 4 : height - padBottom + 10;
         return (
           <g key={i}>
             <circle cx={p.x} cy={p.y} r={4} fill="#3d5df0" />
