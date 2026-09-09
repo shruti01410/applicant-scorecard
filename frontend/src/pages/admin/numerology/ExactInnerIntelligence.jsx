@@ -258,47 +258,49 @@ function PieChart({ data, size = 170 }) {
   );
 }
 
-function LineChart({ data }) {
-  const width = 680;
-  const height = 220;
-  const padTop = 28;
-  const padBottom = 56;
-  const padSide = 30;
+function LineChart({ data, width = 360, height = 200 }) {
+  const pad = 28;
+  const labelBand = 44;
   const maxVal = 5;
-  const stepX = (width - 2 * padSide) / (data.length - 1 || 1);
+  const stepX = (width - 2 * pad) / (data.length - 1 || 1);
   const points = data.map((d, i) => ({
-    x: padSide + i * stepX,
-    y: padTop + (1 - d.value / maxVal) * (height - padTop - padBottom),
+    x: pad + i * stepX,
+    y: pad + (1 - d.value / maxVal) * (height - pad - labelBand - pad),
   }));
   const pathD = points.map((p, i) => (i === 0 ? "M" : "L") + `${p.x},${p.y}`).join(" ");
 
-  function wrapLabel(label) {
+  // word-wrap labels (max 2 lines, break at word boundaries)
+  function wrapLines(label) {
     const words = label.split(" ");
-    if (words.length <= 1) return [label];
+    if (words.length <= 2) return words;
     const mid = Math.ceil(words.length / 2);
     return [words.slice(0, mid).join(" "), words.slice(mid).join(" ")];
   }
+  const wrapped = data.map((d) => wrapLines(d.label));
 
-  const fs = 9;
-  const lh = fs + 2;
+  // auto-size font to longest single word in the label set
+  const allWords = wrapped.flat();
+  const maxWordLen = Math.max(1, ...allWords.map((w) => w.length));
+  const availPerLabel = (width - 2 * pad) / data.length;
+  const fontSize = Math.max(7, Math.min(10, availPerLabel / (maxWordLen * 0.62)));
 
   return (
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet" style={{ display: "block" }}>
+    <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: "block", overflow: "visible" }}>
       {[1, 2, 3, 4, 5].map((v) => {
-        const y = padTop + (1 - v / maxVal) * (height - padTop - padBottom);
-        return <line key={v} x1={padSide} y1={y} x2={width - padSide} y2={y} stroke="#eef0f7" strokeWidth={1} />;
+        const y = pad + (1 - v / maxVal) * (height - pad - labelBand - pad);
+        return <line key={v} x1={pad} y1={y} x2={width - pad} y2={y} stroke="#eef0f7" strokeWidth={1} />;
       })}
       <path d={pathD} fill="none" stroke="#3d5df0" strokeWidth={2.5} />
       {points.map((p, i) => {
-        const lines = wrapLabel(data[i].label);
-        const isOdd = i % 2 === 1;
-        const labelY = isOdd ? height - padBottom + 10 + lh + 4 : height - padBottom + 10;
+        const lines = wrapped[i];
+        const lh = fontSize + 3;
+        const baseY = height - labelBand + 4;
         return (
           <g key={i}>
             <circle cx={p.x} cy={p.y} r={4} fill="#3d5df0" />
-            <text x={p.x} y={p.y - 10} fontSize="10.5" fontWeight="700" fill="#3d5df0" textAnchor="middle">{data[i].value}</text>
+            <text x={p.x} y={p.y - 10} fontSize={fontSize} fontWeight="700" fill="#3d5df0" textAnchor="middle">{data[i].value}</text>
             {lines.map((line, li) => (
-              <text key={li} x={p.x} y={labelY + li * lh} fontSize={fs} fill="#8892a8" textAnchor="middle">{line}</text>
+              <text key={li} x={p.x} y={baseY + li * lh} fontSize={fontSize} fill="#8892a8" textAnchor="middle">{line}</text>
             ))}
           </g>
         );
@@ -699,10 +701,9 @@ function CardDetail({ card }) {
               <div key={d.name} style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
                 border: "1px solid #eceef5", borderRadius: 10, padding: "10px 12px",
-                minWidth: 0,
               }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "#1c2333", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#1c2333" }}>{d.name}</div>
                   <div style={{ fontSize: 11, color: "#a2a9bd" }}>{d.score}/5</div>
                 </div>
                 <div style={{
