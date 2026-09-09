@@ -6,6 +6,27 @@ import { api } from '../../services/api';
 
 const { Title, Text, Paragraph } = Typography;
 
+const CAT_META = {
+  technical: { label: 'Technical Skills', color: '#2563eb' },
+  tools: { label: 'Tools & Platforms', color: '#4f46e5' },
+  soft: { label: 'Soft Skills', color: '#16a34a' },
+  domain: { label: 'Domain & Industry', color: '#7c3aed' },
+  education: { label: 'Education', color: '#d97706' },
+  experience: { label: 'Experience', color: '#ea580c' },
+  certificates: { label: 'Certifications', color: '#0891b2' },
+  responsibilities: { label: 'Responsibilities', color: '#475569' },
+  other: { label: 'Other Requirements', color: '#78716c' },
+};
+
+function StatusChip({ item, isPreferred }) {
+  const status = item.status === 'match' ? 'match' : 'missing';
+  const accent = status === 'match' ? '#16a34a' : isPreferred ? '#a16207' : '#dc2626';
+  const color = status === 'match' ? 'green' : isPreferred ? 'gold' : 'red';
+  const icon = status === 'match' ? '✓' : isPreferred ? '◔' : '✕';
+  const title = `${item.name} · ${Math.round((item.confidence != null ? item.confidence : 0.9) * 100)}% confidence · ${item.mode === 'preferred' ? 'preferred' : 'required'}`;
+  return <Tag key={item.name} color={color} style={{ fontSize: 12, padding: '2px 8px' }} title={title}><span style={{ color: accent }}>{icon}</span> {item.name}</Tag>;
+}
+
 export default function CapabilityMatchPage() {
   const { id } = useParams();
   const [data, setData] = useState(null);
@@ -35,31 +56,55 @@ export default function CapabilityMatchPage() {
   );
 
   const total = (data.matched?.length||0) + (data.missing?.length||0);
+  const overall = data.overall || {};
   return (
     <div style={{ maxWidth:960, margin:'0 auto' }}>
       <Link to={`/scores/${id}`}><Button size="small" style={{ marginBottom:12 }}>← Back to Scorecard — {sc?.applicant_name || `Candidate ${id}`}</Button></Link>
       <Card style={{ borderRadius:12 }}>
         <Title level={4} style={{ margin:0 }}><FileTextOutlined /> Capability Match — JD ↔ Resume</Title>
-        <Text type="secondary" style={{ fontSize:13 }}>Hiring signals only — skills, tools, education & experience extracted from JD and checked in resume</Text>
+        <Text type="secondary" style={{ fontSize:13 }}>Structured extraction — skills, tools, soft skills, domain, education, certifications & experience, split into Required and Preferred. No external API.</Text>
         <div style={{ display:'flex', alignItems:'center', gap:24, marginTop:16, flexWrap:'wrap' }}>
           <Progress type="circle" size={96} percent={data.pct} strokeColor={data.pct>=70?'#16a34a':data.pct>=40?'#f59e0b':'#ef4444'} format={()=> <span style={{ fontSize:22, fontWeight:800 }}>{data.pct}%</span>} />
           <div style={{ flex:1, minWidth:240 }}>
-            <Text strong style={{ fontSize:15 }}>{data.pct}% hiring signals found in resume</Text>
-            <Text type="secondary" style={{ display:'block', fontSize:13, marginTop:4 }}>{data.matched.length} of {total} required signals matched</Text>
+            <Text strong style={{ fontSize:15 }}>{data.pct}% of required requirements met in resume</Text>
+            <Text type="secondary" style={{ display:'block', fontSize:13, marginTop:4 }}>
+              {data.matched.length} of {total} required matched ({overall.preferredMatched ?? 0} of {(overall.preferredMatched ?? 0) + (overall.preferredMissing ?? 0)} preferred)
+            </Text>
             <div style={{ marginTop:8, height:8, background:'#e2e8f0', borderRadius:99, overflow:'hidden' }}><div style={{ width:`${data.pct}%`, height:'100%', background: data.pct>=70?'#16a34a':data.pct>=40?'#f59e0b':'#ef4444', borderRadius:99 }} /></div>
           </div>
         </div>
       </Card>
 
       {data.categories && Object.keys(data.categories).length>0 && (
-        <Card size="small" title="Breakdown by hiring lens" style={{ marginTop:16 }}>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(220px,1fr))', gap:12 }}>
-            {Object.entries(data.categories).map(([cat, d])=> d.required.length>0 && (
-              <div key={cat} style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderLeft:`4px solid ${cat==='skills'||cat==='tools'?'#1e40af':cat==='soft'?'#16a34a':'#f59e0b'}`, borderRadius:8, padding:'12px' }}>
-                <Text strong style={{ fontSize:14, textTransform:'capitalize' }}>{cat}: {d.matched.length}/{d.required.length} · {Math.round(d.matched.length/d.required.length*100)}%</Text>
-                <div style={{ marginTop:8, display:'flex', flexWrap:'wrap', gap:6 }}>{d.required.map(k=> <Tag key={k} color={d.matched.includes(k)?'green':'orange'} style={{ fontSize:12, padding:'2px 8px' }}>{k}</Tag>)}</div>
-              </div>
-            ))}
+        <Card size="small" title="Breakdown by category — Required ✓ / ✕, Preferred ◔" style={{ marginTop:16 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px,1fr))', gap:12 }}>
+            {Object.entries(data.categories).map(([cat, d])=>{
+              const meta = CAT_META[cat] || { label: d.title || cat, color: '#f59e0b' };
+              const reqTotal = d.required.length;
+              const reqMatched = d.matched.length;
+              const items = (d.detail && d.detail.length) ? d.detail : [];
+              const reqItems = items.filter(x=>x.mode==='required');
+              const prefItems = items.filter(x=>x.mode==='preferred');
+              if (!(d.required.length || d.preferred.length)) return null;
+              return (
+                <div key={cat} style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderLeft:`4px solid ${meta.color}`, borderRadius:8, padding:'12px' }}>
+                  <Text strong style={{ fontSize:14 }}>{meta.label}: {reqMatched}/{reqTotal} · {reqTotal ? Math.round(reqMatched/reqTotal*100) : 0}%</Text>
+                  {reqItems.length > 0 && (
+                    <div style={{ marginTop:8, display:'flex', flexWrap:'wrap', gap:6 }}>
+                      {reqItems.map(it=> <StatusChip key={`${it.name}-${it.mode}`} item={it} />)}
+                    </div>
+                  )}
+                  {prefItems.length > 0 && (
+                    <div style={{ marginTop:8, paddingTop:8, borderTop:'1px dashed #dbe1ef' }}>
+                      <Text type="secondary" style={{ fontSize:11, display:'block', marginBottom:4 }}>PREFERRED</Text>
+                      <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                        {prefItems.map(it=> <StatusChip key={`${it.name}-${it.mode}`} item={it} isPreferred />)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </Card>
       )}

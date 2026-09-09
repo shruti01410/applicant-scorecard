@@ -333,22 +333,17 @@ router.get('/employees/:id/capability-match', (req, res) => {
   const emp = db.prepare('SELECT id, resume_text, job_description_id, capability_match_pct, capability_match_detail FROM users WHERE id = ? AND role = ?').get(req.params.id, 'employee');
   if (!emp) return res.status(404).json({ error: 'Employee not found' });
   if (!emp.resume_text || !emp.job_description_id) {
-    return res.json({ pct: null, matched: [], missing: [], categories:{}, flags:[], message: 'Resume or JD not linked yet' });
+    return res.json({ pct: null, matched: [], missing: [], categories: {}, overall: null, flags: [], message: 'Resume or JD not linked yet' });
   }
-  let detail = null;
-  try { detail = emp.capability_match_detail ? JSON.parse(emp.capability_match_detail) : null; } catch (e) {}
   const jd = db.prepare('SELECT description_text FROM job_descriptions WHERE id = ?').get(emp.job_description_id);
   if (!jd) return res.status(404).json({ error: 'Job description not found' });
-  const { pct, matched, missing, categories } = matchResumeToJD(jd.description_text, emp.resume_text);
-  const flags = detectResumeFlags(emp.resume_text, jd.description_text, { pct, matched, missing });
-  const mergedDetail = { matched, missing, categories, flags };
-  if (detail && detail.flags) mergedDetail.flags = detail.flags;
-  else db.prepare('UPDATE users SET capability_match_pct = ?, capability_match_detail = ? WHERE id = ?').run(pct, JSON.stringify(mergedDetail), emp.id);
-  if (detail && emp.capability_match_pct != null) {
-    const f = detail.flags || detectResumeFlags(emp.resume_text, jd.description_text, { pct: emp.capability_match_pct, matched: detail.matched, missing: detail.missing });
-    return res.json({ pct: emp.capability_match_pct, matched: detail.matched || [], missing: detail.missing || [], categories: detail.categories || {}, flags: f, hiringSignals: detail.hiringSignals || detail.matched || [] });
-  }
-  res.json({ pct, matched, missing, categories, flags });
+  const match = matchResumeToJD(jd.description_text, emp.resume_text);
+  let stored = null;
+  try { stored = emp.capability_match_detail ? JSON.parse(emp.capability_match_detail) : null; } catch (e) {}
+  const flags = (stored && stored.flags && stored.flags.length) ? stored.flags : detectResumeFlags(emp.resume_text, jd.description_text, { pct: match.pct, matched: match.matched, missing: match.missing });
+  const body = { ...match, flags, hiringSignals: match.hiringSignals || match.matched };
+  db.prepare('UPDATE users SET capability_match_pct = ?, capability_match_detail = ? WHERE id = ?').run(match.pct, JSON.stringify(body), emp.id);
+  res.json(body);
 });
 
 router.post('/employees/:id/auto-rate', uploadDoc.single('resume'), async (req, res) => {

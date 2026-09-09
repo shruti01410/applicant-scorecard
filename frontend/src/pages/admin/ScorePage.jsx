@@ -244,15 +244,15 @@ export default function ScorePage() {
           <Input.TextArea rows={2} />
         </Form.Item>
 
-        <Card size="small" title={<span><FileTextOutlined /> Capability Match — JD ↔ Resume <Text type="secondary" style={{ fontSize:10, marginLeft:6 }}>hiring signals only</Text></span>} style={{ marginBottom: 16, background: '#fff', border: capability && capability.pct != null ? '1px solid #bfdbfe' : undefined }} extra={<Tag color={capability && capability.pct != null ? capability.pct >= 70 ? 'green' : capability.pct >= 40 ? 'orange' : 'red' : 'default'} style={{ fontSize:13 }}>{capability && capability.pct != null ? `${capability.pct}%` : 'No match yet'}</Tag>}>
-          <div style={{ fontSize: 13, color: '#475569', marginBottom: 8, fontWeight:500 }}>Assistive — hiring-relevant signals (Technical, Soft, Other) from JD checked in resume.</div>
+        <Card size="small" title={<span><FileTextOutlined /> Capability Match — JD ↔ Resume <Text type="secondary" style={{ fontSize:10, marginLeft:6 }}>structured skills · tools · soft skills</Text></span>} style={{ marginBottom: 16, background: '#fff', border: capability && capability.pct != null ? '1px solid #bfdbfe' : undefined }} extra={<Tag color={capability && capability.pct != null ? capability.pct >= 70 ? 'green' : capability.pct >= 40 ? 'orange' : 'red' : 'default'} style={{ fontSize:13 }}>{capability && capability.pct != null ? `${capability.pct}%` : 'No match yet'}</Tag>}>
+          <div style={{ fontSize: 13, color: '#475569', marginBottom: 8, fontWeight:500 }}>Structured extraction (local dictionary, no API) — JD requirements split into Required/Preferred and checked category-by-category against the resume.</div>
           {capability && capability.pct != null ? (
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 10 }}>
                 <Progress type="circle" size={56} percent={capability.pct} strokeColor={capability.pct >= 70 ? '#22c55e' : capability.pct >= 40 ? '#f59e0b' : '#ef4444'} />
                 <div style={{ flex: 1 }}>
-                  <Text strong style={{ fontSize:14 }}>{capability.pct}% hiring signals found in resume ({capability.matched.length}/{capability.matched.length+capability.missing.length})</Text>
-                  <div style={{ marginTop:8 }}><Link to={`/scores/${id}/capability`}><Text strong style={{ color:'#2563eb', fontSize:14, textDecoration:'underline' }}>Click to view detailed match → green / red flags</Text></Link></div>
+                  <Text strong style={{ fontSize:14 }}>{capability.pct}% of required requirements matched ({capability.matched.length}/{capability.matched.length+capability.missing.length})</Text>
+                  <div style={{ marginTop:8 }}><Link to={`/scores/${id}/capability`}><Text strong style={{ color:'#2563eb', fontSize:14, textDecoration:'underline' }}>Click to view detailed match → category breakdown / flags</Text></Link></div>
                 </div>
               </div>
               <Space wrap style={{ marginTop:10 }}>
