@@ -9,35 +9,6 @@ import { badge } from '../../scoreLabels';
 
 const { Title } = Typography;
 
-function TimeLine({ dates }) {
-  if (!dates || dates.length === 0) return <span className="muted">—</span>;
-  const parsed = dates.map(d=> new Date(d.replace(' ', 'T'))).filter(d=>!isNaN(d));
-  if (parsed.length===0) return <span className="muted">—</span>;
-  const min = Math.min(...parsed.map(d=>d.getTime()));
-  const max = Math.max(...parsed.map(d=>d.getTime()));
-  const range = max - min || 86400000;
-  const pos = (t)=> 6 + ((t - min)/range)*88;
-  const sorted = [...dates].sort((a,b)=> new Date(a.replace(' ','T')) - new Date(b.replace(' ','T')));
-  return (
-    <div className="tl">
-      <div className="tl-track">
-        <div className="tl-line" style={{ background:'#e2e8f0' }} />
-        <div className="tl-connector" style={{ left:`${pos(parsed[0].getTime())}%`, right:`${100 - pos(parsed[parsed.length-1].getTime())}%`, background:'#3cde7d' }} />
-        {parsed.map((d,i)=>{
-          const p = pos(d.getTime());
-          const isFirst = i===0;
-          const isLast = i===parsed.length-1;
-          return <div key={i} className={`tl-node ${isFirst?'tl-start':isLast?'tl-end':''}`} style={{ left:`${p}%`, borderColor:'#17c45c', background: isFirst ? '#17c45c' : '#fff' }} title={sorted[i]} />;
-        })}
-      </div>
-      <div className="tl-labels">
-        <span className="tl-label">{parsed[0].toLocaleDateString()}</span>
-        {parsed.length>1 && <span className="tl-label">{parsed[parsed.length-1].toLocaleDateString()}</span>}
-      </div>
-    </div>
-  );
-}
-
 function colorFor(pct) {
   if (pct == null) return '#94a3b8';
   if (pct < 30) return '#ef4444';
@@ -118,7 +89,6 @@ export default function ScoresPage() {
     { title: 'Position', dataIndex: 'position', render: v => v || '—' },
     { title: 'Weighted Score', dataIndex: 'weighted_pct', render: v => badgeFor(v) },
     { title: 'JD Match', dataIndex: 'capability_match_pct', render: v => v == null ? <Tag>—</Tag> : <Tag color={v >= 70 ? 'green' : v >= 40 ? 'orange' : 'red'}>{v}%</Tag> },
-    { title: 'TimeLine', dataIndex: 'updated_at_history', render: (v, row) => <TimeLine dates={v} /> },
     {
       title: 'Action',
       width: 220,
@@ -212,13 +182,12 @@ export default function ScoresPage() {
               <th>CLIENT</th>
               <th>POSITION</th>
               <th>WEIGHTED SCORE</th>
-              <th>TIMELINE</th>
               <th style={{ width:110 }}>ACTION</th>
             </tr>
           </thead>
           <tbody>
-            {loading ? <tr><td colSpan={7} style={{ textAlign:'center', padding:24, color:'#94a3b8' }}>Loading…</td></tr>
-            : paged.length===0 ? <tr><td colSpan={7} style={{ textAlign:'center', padding:32, color:'#94a3b8' }}>No employees found</td></tr>
+            {loading ? <tr><td colSpan={6} style={{ textAlign:'center', padding:24, color:'#94a3b8' }}>Loading…</td></tr>
+            : paged.length===0 ? <tr><td colSpan={6} style={{ textAlign:'center', padding:32, color:'#94a3b8' }}>No employees found</td></tr>
             : paged.map((row,i)=>(
               <tr key={row.id} style={{ opacity: row.is_archived ? 0.6 : 1, background: row.is_favorite ? '#fffbeb' : undefined }}>
                 <td className="td-num">{(page-1)*pageSize + i + 1}</td>
@@ -229,7 +198,6 @@ export default function ScoresPage() {
                 <td style={{ fontSize:13, color:'#334155' }}>{row.client || '—'}</td>
                 <td style={{ fontSize:13, color:'#334155' }}>{row.position || '—'}</td>
                 <td><WeightedBar v={row.weighted_pct} /></td>
-                <td><TimeLine dates={row.updated_at_history} /></td>
                 <td>
                   <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                     <Link to={`/scores/${row.id}`}><button className={row.scorecard_id ? 'btn-edit' : 'btn-score'}>{row.scorecard_id ? 'Edit Score' : 'Score Now'}</button></Link>
