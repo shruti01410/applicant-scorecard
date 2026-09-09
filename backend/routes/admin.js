@@ -228,9 +228,9 @@ router.delete('/job-descriptions/:id', (req, res) => {
   if (!jd) return res.status(404).json({ error: 'Job description not found' });
   db.exec('BEGIN');
   try {
+    db.prepare('UPDATE users SET job_description_id = NULL WHERE job_description_id = ?').run(jd.id);
     db.prepare('DELETE FROM jd_keywords WHERE jd_id = ?').run(jd.id);
     db.prepare('DELETE FROM job_descriptions WHERE id = ?').run(jd.id);
-    db.prepare('UPDATE users SET job_description_id = NULL WHERE job_description_id = ?').run(jd.id);
     db.exec('COMMIT');
   } catch (e) {
     try { db.exec('ROLLBACK'); } catch (ignored) {}
