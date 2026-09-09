@@ -139,6 +139,7 @@ with `npm run build` in `frontend/`; backend behavior is verified by starting th
 | POST | `/api/admin/employees` | admin | Add a candidate `{name, email, date_of_birth}` (DOB required, YYYY-MM-DD) |
 | GET | `/api/admin/employees/:id/scorecard` | admin | Load a candidate's scorecard + scores |
 | POST | `/api/admin/employees/:id/scorecard` | admin | Create/update a scorecard |
+| GET | `/api/admin/employees/:id/integrity-check` | admin | Check resume integrity against 9 predefined rules |
 | POST | `/api/admin/upload-excel` | admin | Bulk import candidates (multipart `file`, .xlsx/.xls) |
 | GET | `/api/employee/scorecard` | employee | Current employee's own scorecard (read-only) |
 
@@ -191,6 +192,18 @@ Create-candidate payload: `{name, email, date_of_birth (required, YYYY-MM-DD), p
   in the background (foreground `node server.js` blocks the shell). Start vite with
   `node_modules\.bin\vite.cmd --port 3000 --strictPort` via `Start-Process`.
 - Heavy `vite build` can overwhelm the machine — close other programs before building.
+
+## Resume Integrity Analyzer
+
+Added feature: admin-only integrity check for candidate resumes.
+
+- **Backend**: `backend/resumeIntegrityAnalyzer.js` — 9 predefined rules (unclear dates, overlapping timelines, contradictions, selective history, designation mismatch, inflated experience, keyword stuffing, unverifiable details, concealment)
+- **API**: `GET /api/admin/employees/:id/integrity-check` — returns `{ integrityStatus, detectedFlags[] }` with evidence-based flags (confidence ≥ 60 only)
+- **Frontend**: `frontend/src/components/ResumeIntegrity.jsx` — displays integrity results in a modal
+- **UI**: "Integrity" button added to ScoresPage table Action column; click opens integrity modal
+- Every flag includes `evidence` (quoted fragments from the resume), `sourceSections`, `severity`, and `confidence`
+- No flags are fabricated — detection requires concrete evidence in the resume text
+- `resumeFlags.js` (legacy capability-based flags) remains separate from `resumeIntegrityAnalyzer.js`
 
 ## Security Notes
 

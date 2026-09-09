@@ -61,10 +61,16 @@
 }
 
 /* Add Candidate modal: JD + Resume uploads side by side */
-.upload-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.candidate-upload-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
 .upload-column{min-width:0}
+.upload-label{display:flex;align-items:baseline;min-height:24px;margin-bottom:8px;font-size:16px;font-weight:500}
+.upload-label span{font-weight:400}
+.jd-label{color:#e74c3c}
+.resume-label{color:#27ae60}
 .upload-column .ant-select{width:100%}
-@media(max-width:700px){.upload-row{grid-template-columns:1fr}}
+.upload-column .ant-form-item{margin-bottom:12px}
+.upload-column .ant-form-item:last-child{margin-bottom:0}
+@media(max-width:768px){.candidate-upload-grid{grid-template-columns:1fr}}
 .add-candidate-modal .ant-upload-list{margin-top:6px}
 .add-candidate-modal .ant-upload-list-item{overflow:hidden}
 .add-candidate-modal .ant-upload-list-item-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

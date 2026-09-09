@@ -14,6 +14,7 @@ const { autoRateParameters } = require('../autoRate');
 const { detectResumeFlags } = require('../resumeFlags');
 const numer = require('../numerologyUtils');
 const resumeValidation = require('../resumeValidation');
+const { analyzeResume } = require('../resumeIntegrityAnalyzer');
 
 const router = express.Router();
 router.use(authenticate, requireRole('admin'));
@@ -557,6 +558,20 @@ router.get('/employees/:id/capability-match', (req, res) => {
     const body = { ...match, jdId: emp.job_description_id, flags, hiringSignals: match.hiringSignals || match.matched };
     db.prepare('UPDATE users SET capability_match_pct = ?, capability_match_detail = ? WHERE id = ?').run(match.pct, JSON.stringify(body), emp.id);
     res.json(body);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/employees/:id/integrity-check', (req, res) => {
+  try {
+    const emp = db.prepare('SELECT id, name, resume_text, job_description_id FROM users WHERE id = ? AND role = ?').get(req.params.id, 'employee');
+    if (!emp) return res.status(404).json({ error: 'Employee not found' });
+    if (!emp.resume_text || !emp.resume_text.trim()) {
+      return res.json({ integrityStatus: 'No resume text to analyze', detectedFlags: [] });
+    }
+    const result = analyzeResume(emp.resume_text);
+    res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

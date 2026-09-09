@@ -3,10 +3,11 @@ import {
   Typography, Table, Button, Input, Space, Tag, Modal, Form, message, Card, Select, Upload, Popconfirm, Segmented, Dropdown, DatePicker,
 } from 'antd';
 import { Link } from 'react-router-dom';
-import { UploadOutlined, PlusOutlined, FileTextOutlined, StarOutlined, StarFilled, DeleteOutlined, InboxOutlined, UndoOutlined } from '@ant-design/icons';
+import { UploadOutlined, PlusOutlined, FileTextOutlined, StarOutlined, StarFilled, DeleteOutlined, InboxOutlined, UndoOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { api } from '../../services/api';
 import { badge } from '../../scoreLabels';
 import { validateResumeFileClient } from '../../services/resumeCheck';
+import ResumeIntegrity from '../../components/ResumeIntegrity';
 
 const { Title } = Typography;
 
@@ -40,6 +41,10 @@ export default function ScoresPage() {
   const [importing, setImporting] = useState(false);
   const [jds, setJds] = useState([]);
   const fileRef = useRef(null);
+  const [integrityOpen, setIntegrityOpen] = useState(false);
+  const [integrityData, setIntegrityData] = useState(null);
+  const [integrityLoading, setIntegrityLoading] = useState(false);
+  const [integrityEmpId, setIntegrityEmpId] = useState(null);
 
   async function fetchRows() {
     setLoading(true);
@@ -78,6 +83,21 @@ export default function ScoresPage() {
     try { await api.delete(`/api/admin/employees/${id}`); message.success('Candidate deleted'); fetchRows(); } catch (e) { message.error(e.message); }
   }
 
+  async function handleIntegrityCheck(id) {
+    setIntegrityEmpId(id);
+    setIntegrityLoading(true);
+    setIntegrityOpen(true);
+    try {
+      const data = await api.get(`/api/admin/employees/${id}/integrity-check`);
+      setIntegrityData(data);
+    } catch (e) {
+      message.error(e.message);
+      setIntegrityData(null);
+    } finally {
+      setIntegrityLoading(false);
+    }
+  }
+
   const columns = [
     { title: '', width: 40, render: (_, row) => <Button type="text" size="small" icon={row.is_favorite ? <StarFilled style={{ color: '#f59e0b' }} /> : <StarOutlined />} onClick={() => toggleFav(row.id)} /> },
     { title: '#', render: (_, __, i) => i + 1, width: 40 },
@@ -92,10 +112,11 @@ export default function ScoresPage() {
     { title: 'JD Match', dataIndex: 'capability_match_pct', render: v => v == null ? <Tag>—</Tag> : <Tag color={v >= 70 ? 'green' : v >= 40 ? 'orange' : 'red'}>{v}%</Tag> },
     {
       title: 'Action',
-      width: 220,
+      width: 260,
       render: (_, row) => (
         <Space>
           <Link to={`/scores/${row.id}`}><Button size="small" type="primary">{row.scorecard_id ? 'Edit Score' : 'Score Now'}</Button></Link>
+          <Button size="small" icon={<SafetyCertificateOutlined />} onClick={() => handleIntegrityCheck(row.id)}>Integrity</Button>
           <Button size="small" icon={row.is_archived ? <UndoOutlined /> : <InboxOutlined />} onClick={() => toggleArchive(row.id)}>{row.is_archived ? 'Unarchive' : 'Archive'}</Button>
           <Popconfirm title="Delete candidate?" description="This removes scorecard and numerology data. Cannot be undone." okText="Delete" okButtonProps={{ danger: true }} onConfirm={() => handleDelete(row.id)}><Button size="small" danger icon={<DeleteOutlined />} /></Popconfirm>
         </Space>
@@ -241,18 +262,34 @@ export default function ScoresPage() {
           <Form.Item name="date_of_birth" label="Date of Birth *" rules={[{ required: true, message: 'Date of Birth is required.' }]}><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="DD/MM/YYYY" disabledDate={(d) => d && d.isAfter(new Date())} /></Form.Item>
           <Form.Item name="position" label="Role / Position"><Input placeholder="Senior Accounts Payable" /></Form.Item>
           <Form.Item name="client" label="Client"><Input placeholder="iSHR" /></Form.Item>
-          <div className="upload-row">
-            <div className="upload-column">
-              <Form.Item name="job_description_id" label="Job Description"><Select style={{ width: '100%' }} placeholder="Select existing JD — or upload new below" allowClear options={jds.map(j => ({ value: j.id, label: `${j.title}${j.client ? ` · ${j.client}` : ''}` }))} /></Form.Item>
-              <Form.Item name="jd_file" valuePropName="file"><Upload beforeUpload={() => false} maxCount={1} accept=".pdf,.docx"><Button icon={<UploadOutlined />} block>Select JD file</Button></Upload></Form.Item>
+          <div className="candidate-upload-grid">
+            <div className="upload-column jd-column">
+              <div className="upload-label jd-label">JD PDF/DOCX <span>(creates JD on the fly)</span></div>
+              <Form.Item name="job_description_id" label={null} style={{ marginBottom: 12 }}><Select style={{ width: '100%' }} placeholder="Select existing JD" allowClear options={jds.map(j => ({ value: j.id, label: `${j.title}${j.client ? ` · ${j.client}` : ''}` }))} /></Form.Item>
+              <Form.Item label={null}><Upload beforeUpload={() => false} maxCount={1} accept=".pdf,.docx"><Button icon={<UploadOutlined />} block>Select JD file</Button></Upload></Form.Item>
             </div>
-            <div className="upload-column">
-              <Form.Item name="resume" label="Resume (PDF/DOC/DOCX, 10MB)" valuePropName="file"><Upload beforeUpload={(file) => { const r = validateResumeFileClient(file); if (!r.ok) { message.error(r.message); return Upload.LIST_IGNORE; } return false; }} maxCount={1} accept=".pdf,.doc,.docx"><Button icon={<UploadOutlined />} block>Select resume file</Button></Upload></Form.Item>
+            <div className="upload-column resume-column">
+              <div className="upload-label resume-label">Resume <span>(PDF/DOC/DOCX, 10MB)</span></div>
+              <Form.Item name="resume" valuePropName="file" label={null}><Upload beforeUpload={(file) => { const r = validateResumeFileClient(file); if (!r.ok) { message.error(r.message); return Upload.LIST_IGNORE; } return false; }} maxCount={1} accept=".pdf,.doc,.docx"><Button icon={<UploadOutlined />} block>Select resume file</Button></Upload></Form.Item>
             </div>
           </div>
           <div style={{ fontSize: 11, color: '#9aa0a6', marginBottom: 12 }}><FileTextOutlined /> Upload JD + resume to calculate Capability Match and auto-rate parameters.</div>
           <Button type="primary" htmlType="submit" block>Add Candidate</Button>
         </Form>
+      </Modal>
+      <Modal
+        title="Resume Integrity Check"
+        open={integrityOpen}
+        onCancel={() => { setIntegrityOpen(false); setIntegrityData(null); }}
+        footer={null}
+        width={640}
+        destroyOnClose
+      >
+        <ResumeIntegrity
+          integrityData={integrityData}
+          loading={integrityLoading}
+          onCheck={() => handleIntegrityCheck(integrityEmpId)}
+        />
       </Modal>
     </div>
   );
