@@ -330,20 +330,24 @@ router.post('/employees/:id/resume', uploadDoc.single('resume'), async (req, res
 });
 
 router.get('/employees/:id/capability-match', (req, res) => {
-  const emp = db.prepare('SELECT id, resume_text, job_description_id, capability_match_pct, capability_match_detail FROM users WHERE id = ? AND role = ?').get(req.params.id, 'employee');
-  if (!emp) return res.status(404).json({ error: 'Employee not found' });
-  if (!emp.resume_text || !emp.job_description_id) {
-    return res.json({ pct: null, matched: [], missing: [], categories: {}, overall: null, flags: [], message: 'Resume or JD not linked yet' });
+  try {
+    const emp = db.prepare('SELECT id, resume_text, job_description_id, capability_match_pct, capability_match_detail FROM users WHERE id = ? AND role = ?').get(req.params.id, 'employee');
+    if (!emp) return res.status(404).json({ error: 'Employee not found' });
+    if (!emp.resume_text || !emp.job_description_id) {
+      return res.json({ pct: null, matched: [], missing: [], categories: {}, overall: null, flags: [], message: 'Resume or JD not linked yet' });
+    }
+    const jd = db.prepare('SELECT description_text FROM job_descriptions WHERE id = ?').get(emp.job_description_id);
+    if (!jd) return res.status(404).json({ error: 'Job description not found' });
+    const match = matchResumeToJD(jd.description_text, emp.resume_text);
+    let stored = null;
+    try { stored = emp.capability_match_detail ? JSON.parse(emp.capability_match_detail) : null; } catch (e) {}
+    const flags = (stored && stored.flags && stored.flags.length) ? stored.flags : detectResumeFlags(emp.resume_text, jd.description_text, { pct: match.pct, matched: match.matched, missing: match.missing });
+    const body = { ...match, flags, hiringSignals: match.hiringSignals || match.matched };
+    db.prepare('UPDATE users SET capability_match_pct = ?, capability_match_detail = ? WHERE id = ?').run(match.pct, JSON.stringify(body), emp.id);
+    res.json(body);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
-  const jd = db.prepare('SELECT description_text FROM job_descriptions WHERE id = ?').get(emp.job_description_id);
-  if (!jd) return res.status(404).json({ error: 'Job description not found' });
-  const match = matchResumeToJD(jd.description_text, emp.resume_text);
-  let stored = null;
-  try { stored = emp.capability_match_detail ? JSON.parse(emp.capability_match_detail) : null; } catch (e) {}
-  const flags = (stored && stored.flags && stored.flags.length) ? stored.flags : detectResumeFlags(emp.resume_text, jd.description_text, { pct: match.pct, matched: match.matched, missing: match.missing });
-  const body = { ...match, flags, hiringSignals: match.hiringSignals || match.matched };
-  db.prepare('UPDATE users SET capability_match_pct = ?, capability_match_detail = ? WHERE id = ?').run(match.pct, JSON.stringify(body), emp.id);
-  res.json(body);
 });
 
 router.post('/employees/:id/auto-rate', uploadDoc.single('resume'), async (req, res) => {
