@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
-  Typography, Table, Button, Input, Space, Tag, Modal, Form, message, Card, Select, Upload, Popconfirm, Segmented, Dropdown, DatePicker,
+  Typography, Table, Button, Input, Space, Tag, Modal, Form, message, Card, Select, Upload, Popconfirm, Segmented, Dropdown, DatePicker, Row, Col,
 } from 'antd';
 import { Link } from 'react-router-dom';
 import { UploadOutlined, PlusOutlined, FileTextOutlined, StarOutlined, StarFilled, DeleteOutlined, InboxOutlined, UndoOutlined } from '@ant-design/icons';
@@ -240,9 +240,15 @@ export default function ScoresPage() {
           <Form.Item name="date_of_birth" label="Date of Birth *" rules={[{ required: true, message: 'Date of Birth is required.' }]}><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="DD/MM/YYYY" disabledDate={(d) => d && d.isAfter(new Date())} /></Form.Item>
           <Form.Item name="position" label="Role / Position"><Input placeholder="Senior Accounts Payable" /></Form.Item>
           <Form.Item name="client" label="Client"><Input placeholder="iSHR" /></Form.Item>
-          <Form.Item name="job_description_id" label="Job Description (optional)"><Select placeholder="Select existing JD — or upload new below" allowClear options={jds.map(j => ({ value: j.id, label: `${j.title}${j.client ? ` · ${j.client}` : ''}` }))} /></Form.Item>
-          <Form.Item name="jd_file" label="Or upload new JD PDF/DOCX (creates JD on the fly)" valuePropName="file"><Upload beforeUpload={() => false} maxCount={1} accept=".pdf,.docx"><Button icon={<UploadOutlined />}>Select JD file</Button></Upload></Form.Item>
-          <Form.Item name="resume" label="Resume (PDF/DOCX, 10MB)" valuePropName="file"><Upload beforeUpload={() => false} maxCount={1} accept=".pdf,.docx"><Button icon={<UploadOutlined />}>Select resume</Button></Upload></Form.Item>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="job_description_id" label="Job Description"><Select placeholder="Select existing JD — or upload new below" allowClear options={jds.map(j => ({ value: j.id, label: `${j.title}${j.client ? ` · ${j.client}` : ''}` }))} /></Form.Item>
+              <Form.Item name="jd_file" label="Upload new JD PDF/DOCX (creates JD on the fly)" valuePropName="file"><Upload beforeUpload={() => false} maxCount={1} accept=".pdf,.docx"><Button icon={<UploadOutlined />}>Upload JD</Button></Upload></Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="resume" label="Resume (PDF/DOCX)" valuePropName="file"><Upload beforeUpload={() => false} maxCount={1} accept=".pdf,.docx"><Button icon={<UploadOutlined />}>Upload Resume</Button></Upload></Form.Item>
+            </Col>
+          </Row>
           <div style={{ fontSize: 11, color: '#9aa0a6', marginBottom: 12 }}><FileTextOutlined /> Upload JD PDF + resume together → JD is created, Capability Match % computed, and the <b>23 parameters are auto-rated</b> (role + numerology aware, editable). Or pick an existing JD.</div>
           <Button type="primary" htmlType="submit" block>Add Candidate</Button>
         </Form>
