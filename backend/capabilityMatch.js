@@ -135,6 +135,7 @@ const KB = [
   { term: 'sas', display: 'SAS', category: 'technical', confidence: 0.94 },
   { term: 'machine learning', display: 'Machine Learning', category: 'technical', confidence: 0.99 },
   { term: 'deep learning', display: 'Deep Learning', category: 'technical', confidence: 0.98 },
+  { term: 'artificial intelligence', display: 'Artificial Intelligence', category: 'technical', confidence: 0.99 },
   { term: 'natural language processing', display: 'NLP', category: 'technical', confidence: 0.97 },
   { term: 'computer vision', display: 'Computer Vision', category: 'technical', confidence: 0.96 },
   { term: 'data science', display: 'Data Science', category: 'technical', confidence: 0.97 },
@@ -898,6 +899,7 @@ function extractEntities(text, { sectionMode = 'required' } = {}) {
       const key = resolveKey(phrase);
       if (!key) continue;
       const ent = TERM_MAP.get(key);
+      if (!ent) continue;
       const context = sentenceFor(tokens, ranges, i);
       if (isNegated(ent, context)) continue;
       for (let k = i; k < i + n; k++) used[k] = true;
