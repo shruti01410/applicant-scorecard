@@ -26,7 +26,7 @@ function getEmployeeOr404(id) {
   return db.prepare('SELECT id, name, email FROM users WHERE id = ? AND role = ?').get(id, 'employee');
 }
 
-const ELEMENT_NAMES = { AGNI: 'Momentum', VAYU: 'Ideation', JALA: 'Connection', PRITHVI: 'Foundation', AKASHA: 'Perspective' };
+const ELEMENT_NAMES = { AGNI: 'Momentum', VAYU: 'Ideation', JALA: 'Connection', AKASHA: 'Perspective' };
 const MODE_NAMES = { Sattva: 'Composure', Rajas: 'Energy & Drive', Tamas: 'Change Resistance' };
 
 function archetypeFor(number) {

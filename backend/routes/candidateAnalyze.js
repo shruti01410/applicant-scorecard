@@ -51,8 +51,8 @@ router.post('/analyze', upload.single('resume_file'), async (req,res)=>{
     const elements={};
     if(triNature && triNature.elements){
       for(const [k,v] of Object.entries(triNature.elements)){
-        const labelMap={AGNI:'MOMENTUM',VAYU:'IDEATION',JALA:'CONNECTION',PRITHVI:'FOUNDATION',AKASHA:'PERSPECTIVE'};
-        const descMap={AGNI:'Drive & Execution',VAYU:'Creative Thinking',JALA:'Emotional Intelligence',PRITHVI:'Stability & Discipline',AKASHA:'Strategic Vision'};
+        const labelMap={AGNI:'MOMENTUM',VAYU:'IDEATION',JALA:'CONNECTION',AKASHA:'PERSPECTIVE'};
+        const descMap={AGNI:'Drive & Execution',VAYU:'Creative Thinking',JALA:'Emotional Intelligence',AKASHA:'Strategic Vision'};
         elements[k.toLowerCase()]={ score:v, label:labelMap[k]||k, desc:descMap[k]||'', parameters: Object.entries(triNature.parameters||{}).filter(([,p])=>p.element===k).map(([name,p])=>({ parameter:name, score:p.score, level:p.label, evidence: p.light? [p.light]:[], strength:p.light, shadow:p.shadow, source:'Resume+Numerology' })) };
       }
     }

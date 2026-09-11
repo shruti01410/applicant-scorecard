@@ -11,13 +11,12 @@ import { api } from "../../../services/api";
    copy; scores come live from the backend).
 --------------------------------------------------------- */
 
-const INTERNAL_TO_DISPLAY = { AGNI: "MOMENTUM", VAYU: "IDEATION", JALA: "CONNECTION", PRITHVI: "FOUNDATION", AKASHA: "PERSPECTIVE" };
+const INTERNAL_TO_DISPLAY = { AGNI: "MOMENTUM", VAYU: "IDEATION", JALA: "CONNECTION", AKASHA: "PERSPECTIVE" };
 
 const ELEMENT_META = {
   MOMENTUM: { label: "MOMENTUM", sub: "Drive & Execution", fit: "Sales, delivery, start-and-scale environments — roles that need initiative and ownership.", icon: Zap, color: "#e3742f", tint: "#fef1e8" },
   IDEATION: { label: "IDEATION", sub: "Creative Thinking", fit: "Marketing, product, content, R&D, strategy — anything that rewards original thinking.", icon: Lightbulb, color: "#a5872f", tint: "#fbf6e6" },
   CONNECTION: { label: "CONNECTION", sub: "Emotional Intelligence", fit: "Support, HR, client success, healthcare — roles that hinge on trust and relationship quality.", icon: Heart, color: "#c7607a", tint: "#fdedf1" },
-  FOUNDATION: { label: "FOUNDATION", sub: "Stability & Discipline", fit: "Operations, finance, compliance, QA — roles where dependable matters more than exciting.", icon: ShieldCheck, color: "#5da88f", tint: "#eaf7f1" },
   PERSPECTIVE: { label: "PERSPECTIVE", sub: "Strategic Vision", fit: "Strategy, leadership, coaching, advisory — senior roles needing judgment and clear values.", icon: Eye, color: "#3d5df0", tint: "#eef1ff" },
 };
 
@@ -434,8 +433,8 @@ function IntroScreen({ onStart }) {
         maxWidth: 460, margin: "0 auto 36px", color: "#ffffff !important", fontSize: 15.5, lineHeight: 1.6,
       }}>
         Inner Intelligence reads a candidate's name, date of birth, and resume, then maps
-        25 behavioral parameters across five elements — how they drive, think, connect, and
-        hold steady under pressure.
+        21 behavioral parameters across four elements — how they drive, think, connect, and
+        hold steady under pressure — grouped into 6 meaningful categories.
       </p>
 
       <button onClick={onStart} style={{
@@ -450,7 +449,7 @@ function IntroScreen({ onStart }) {
       <div style={{
         marginTop: 48, display: "flex", justifyContent: "center", gap: 44, flexWrap: "wrap",
       }}>
-        {[["25", "BEHAVIORAL PARAMETERS"], ["5", "CORE ELEMENTS"], ["6", "READING LENSES"]].map(([n, l]) => (
+        {[["6", "CATEGORIES"], ["4", "CORE ELEMENTS"], ["21", "BEHAVIORAL PARAMETERS"]].map(([n, l]) => (
           <div key={l}>
             <div style={{ fontSize: 27, fontWeight: 800, color: "#ffffff !important" }}>{n}</div>
             <div style={{ fontSize: 10.5, letterSpacing: 1, color: "#ffffff !important", marginTop: 4, opacity: 0.75 }}>{l}</div>
@@ -555,7 +554,8 @@ function LoadingScreen({ onDone }) {
   const messages = [
     "Reading name and date of birth…",
     "Building the 9-number base…",
-    "Mapping the 25 behavioral parameters…",
+    "Mapping the 21 behavioral parameters…",
+    "Grouping into 6 categories…",
     "Assembling the signature…",
   ];
   const [i, setI] = useState(0);
@@ -638,6 +638,72 @@ function FilledScreen({ name, dob, hasDob, onOpenReport, onBack }) {
 
 function CardDetail({ card }) {
   switch (card.id) {
+    case "categories":
+      return (
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#5c6580", marginBottom: 10 }}>
+            SIX MEANINGFUL CATEGORIES — SCORED 0–100
+          </div>
+          <div style={{ fontSize: 12.5, color: "#8892a8", marginBottom: 16, lineHeight: 1.55 }}>
+            Expression, Attitude, Unmasked, Personality, and Soul Urge are scored from behavioral parameters.
+            Masked traits (Ambition, Competitive Drive, Dominance, Ego) are interview-only — they shift with context
+            and get scenario prompts instead of flat resume scores.
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 18 }}>
+            {card.categories && Object.entries(card.categories).map(([key, cat]) => (
+              <div key={key} style={{
+                border: "1px solid #eceef5", borderRadius: 10, padding: "12px",
+                background: cat.score != null ? "#fff" : "#f9fafc",
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: "#1c2333" }}>{cat.name}</div>
+                  {cat.score != null ? (
+                    <div style={{
+                      fontSize: 12, fontWeight: 700, color: cat.score >= 70 ? "#2f7a52" : cat.score >= 40 ? "#a4700e" : "#8892a8",
+                      background: cat.score >= 70 ? "#eaf7ef" : cat.score >= 40 ? "#fff3dc" : "#f2f3f8",
+                      padding: "2px 8px", borderRadius: 99,
+                    }}>{cat.score}/100</div>
+                  ) : (
+                    <div style={{ fontSize: 11, color: "#8892a8", fontStyle: "italic" }}>Interview-only</div>
+                  )}
+                </div>
+                <div style={{ fontSize: 11.5, color: "#5c6580", marginBottom: 6 }}>{cat.desc}</div>
+                {cat.params && cat.params.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    {cat.params.map((p) => (
+                      <span key={p.name} style={{
+                        fontSize: 10.5, color: "#5c6580", background: "#f2f3f8",
+                        padding: "2px 7px", borderRadius: 6,
+                      }}>{p.name} {p.score != null ? `(${p.score})` : ''}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {card.maskedTraits && card.maskedTraits.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#5c6580", marginBottom: 10 }}>
+                MASKED TRAITS — INTERVIEW SCENARIOS
+              </div>
+              <div style={{ fontSize: 12.5, color: "#8892a8", marginBottom: 12, lineHeight: 1.55 }}>
+                These traits shift with context — they surface under pressure, not on a resume.
+                Use these scenarios in the interview to observe them directly.
+              </div>
+              {card.maskedTraits.map((m, i) => (
+                <div key={i} style={{
+                  background: "#fff8ef", border: "1px solid #f2e2c4", borderRadius: 10,
+                  padding: "12px 14px", marginBottom: 10,
+                }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: "#a4700e", marginBottom: 4 }}>{m.trait}</div>
+                  <div style={{ fontSize: 13, color: "#3c4457", lineHeight: 1.5 }}>{m.prompt}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
     case "signature":
       return (
         <div>
@@ -873,7 +939,7 @@ function ReportScreen({ name, hasDob, scoreValue, cards, onBack, onUnlock }) {
         }}>
           <div>
             <div style={{ fontSize: 18, fontWeight: 700, color: "#1c2333", marginBottom: 4 }}>{name}</div>
-            <div style={{ fontSize: 13, color: "#8892a8" }}>Full behavioral profile — 5 elements, 25 parameters, plus fit signals.</div>
+            <div style={{ fontSize: 13, color: "#8892a8" }}>Full behavioral profile — 6 categories, 4 elements, 21 parameters, plus fit signals.</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <div style={{
@@ -939,6 +1005,8 @@ export default function ExactInnerIntelligence({ employeeId }) {
   const [prep, setPrep] = useState(null);
   const [company, setCompany] = useState(null);
   const [scoreValue, setScoreValue] = useState(0);
+  const [categories, setCategories] = useState(null);
+  const [maskedTraits, setMaskedTraits] = useState([]);
 
   async function loadAll() {
     setGated(false);
@@ -982,10 +1050,14 @@ export default function ExactInnerIntelligence({ employeeId }) {
           { label: TRIGUNA_META.Rajas.label, value: raw.Rajas ?? 0, color: TRIGUNA_META.Rajas.color },
           { label: TRIGUNA_META.Tamas.label, value: raw.Tamas ?? 0, color: TRIGUNA_META.Tamas.color },
         ].filter((x) => x.value > 0));
+        setCategories(t.categories || null);
+        setMaskedTraits(t.maskedTraits || []);
       } else {
         setElements([]);
         setSig(null);
         setTriguna([]);
+        setCategories(null);
+        setMaskedTraits([]);
       }
 
       const params = (n && n.params) || [];
@@ -1074,7 +1146,7 @@ export default function ExactInnerIntelligence({ employeeId }) {
   const cards = [
     {
       id: "drivers", icon: Gem, title: "Behavioral Drivers",
-      desc: "5 elements · 25 parameters, with strengths and edges, scored and explained.",
+      desc: "4 elements · 21 parameters, with strengths and edges, scored and explained.",
       meta: `${elements.length} elements`, gated: true, elements,
     },
     {
@@ -1091,8 +1163,13 @@ export default function ExactInnerIntelligence({ employeeId }) {
       gated: true, rankItems, verdict: conclusion ? conclusion.finalVerdict : "",
     },
     {
+      id: "categories", icon: Sparkles, title: "6 Categories",
+      desc: "Expression, Attitude, Unmasked, Personality, Soul Urge — plus Masked traits for interview.",
+      meta: "6 lenses", gated: true, categories, maskedTraits,
+    },
+    {
       id: "deeper", icon: Sparkles, title: "Deeper Parameters",
-      desc: "Six additional lenses — stillness, luck, harmony, destiny, balance, and instinct.",
+      desc: "Six additional lenses — stillness, luck, harmony, destiny, karmic balance, and intuition.",
       meta: numoAvg ? `${numoAvg}/100 avg` : "Inner Intelligence", gated: true, deeper,
     },
     {
