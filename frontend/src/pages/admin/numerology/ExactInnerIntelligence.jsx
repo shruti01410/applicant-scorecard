@@ -898,9 +898,25 @@ function ReportScreen({ name, hasDob, scoreValue, cards, onBack, onUnlock, emplo
     return <FeatureDetail feature={activeFeature} onBack={() => setActiveFeature(null)} />;
   }
 
-  function handleDownloadPdf() {
+  async function handleDownloadPdf() {
     const token = localStorage.getItem('token');
-    window.open(`/api/admin/employees/${employeeId}/numerology/pdf${token ? `?token=${token}` : ''}`, '_blank');
+    try {
+      const res = await fetch(`/api/admin/employees/${employeeId}/numerology/pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Download failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${name.replace(/[^a-zA-Z0-9]/g, '_')}_inner_intelligence_report.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('Failed to download PDF: ' + e.message);
+    }
   }
 
   return (
