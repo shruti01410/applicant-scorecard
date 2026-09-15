@@ -241,7 +241,7 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
     if (tri && tri.parameters) {
       y = secTitle(doc, y, 'STRENGTHS VS EDGES');
       const barX = MX + 140;
-      const barW = CW - 140;
+      const barW = CW - 140 - 80;
       const barH = 16;
 
       const EL_ORDER = ['AGNI', 'VAYU', 'JALA', 'AKASHA'];
@@ -254,15 +254,32 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
 
       EL_ORDER.forEach(el => {
         const params = elGroups[el] || [];
-        const strengths = params.filter(p => p.score >= 70).length;
-        const edges = params.filter(p => p.score < 40).length;
-        const neutral = params.length - strengths - edges;
+        if (!params.length) return;
+        const high = params.filter(p => p.score >= 70).length;
+        const mid = params.filter(p => p.score >= 40 && p.score < 70).length;
+        const low = params.filter(p => p.score < 40).length;
+        const total = params.length;
 
         y = pb(doc, y, 28);
         doc.save();
         doc.fontSize(9).fillColor('#1c2333').font('Helvetica-Bold').text(EL_NAMES[el] || el, MX, y + 2, { width: 130 });
-        drawStackedBar(doc, barX, y + 2, barW, barH, strengths, edges);
-        doc.fontSize(8).fillColor('#5c6580').font('Helvetica').text(`${strengths} strong  ${edges} edge${edges !== 1 ? 's' : ''}`, barX + barW + 8, y + 4, { width: 80 });
+        let bx = barX;
+        if (high > 0) {
+          const w = (high / total) * barW;
+          doc.roundedRect(bx, y + 2, w, barH, 3).fill('#2f7a52');
+          bx += w;
+        }
+        if (mid > 0) {
+          const w = (mid / total) * barW;
+          doc.rect(bx, y + 2, w, barH).fill('#c8cce0');
+          bx += w;
+        }
+        if (low > 0) {
+          const w = (low / total) * barW;
+          doc.roundedRect(bx, y + 2, w, barH, 3).fill('#e3742f');
+          bx += w;
+        }
+        doc.fontSize(8).fillColor('#5c6580').font('Helvetica').text(`${high} high  ${mid} mid  ${low} low`, barX + barW + 8, y + 4, { width: 80 });
         doc.restore();
         y += 28;
       });
@@ -271,9 +288,11 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
       y += 4;
       doc.save();
       doc.roundedRect(MX, y, 10, 10, 2).fill('#2f7a52');
-      doc.fontSize(8).fillColor('#1c2333').font('Helvetica').text('Strengths (70+)', MX + 14, y - 1, { width: 80 });
-      doc.roundedRect(MX + 110, y, 10, 10, 2).fill('#e3742f');
-      doc.fontSize(8).fillColor('#1c2333').font('Helvetica').text('Edges (<40)', MX + 124, y - 1, { width: 70 });
+      doc.fontSize(8).fillColor('#1c2333').font('Helvetica').text('Strong (70+)', MX + 14, y - 1, { width: 65 });
+      doc.roundedRect(MX + 90, y, 10, 10, 2).fill('#c8cce0');
+      doc.fontSize(8).fillColor('#1c2333').font('Helvetica').text('Moderate (40-69)', MX + 104, y - 1, { width: 80 });
+      doc.roundedRect(MX + 195, y, 10, 10, 2).fill('#e3742f');
+      doc.fontSize(8).fillColor('#1c2333').font('Helvetica').text('Edge (<40)', MX + 209, y - 1, { width: 60 });
       doc.restore();
       y += 20;
     }
