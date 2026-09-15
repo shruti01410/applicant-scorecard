@@ -129,12 +129,11 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
 
     if (pct != null && badge) {
       doc.save();
-      doc.roundedRect(PAGE_W - MARGIN - 90, y, 90, 36, 8).fill(badge.color);
-      doc.fontSize(16).fillColor('#ffffff').font('Helvetica-Bold').text(`${pct}%`, PAGE_W - MARGIN - 90, y + 4, { width: 90, align: 'center' });
-      doc.fontSize(8).fillColor('#ffffff').font('Helvetica').text(badge.label, PAGE_W - MARGIN - 90, y + 22, { width: 90, align: 'center' });
+      doc.roundedRect(MARGIN, y, CONTENT_W, 52, 8).fill(badge.color);
+      doc.fontSize(28).fillColor('#ffffff').font('Helvetica-Bold').text(`${pct}%`, MARGIN, y + 8, { width: CONTENT_W, align: 'center' });
+      doc.fontSize(11).fillColor('#ffffff').font('Helvetica').text(`${badge.label}`, MARGIN, y + 34, { width: CONTENT_W, align: 'center' });
       doc.restore();
-      doc.fontSize(10).fillColor('#5c6580').font('Helvetica').text(`Weighted Score: ${pct}% — ${badge.label}`, MARGIN, y + 10, { width: CONTENT_W - 110 });
-      y += 50;
+      y += 65;
     }
 
     if (core.lifePath || core.expression) {
