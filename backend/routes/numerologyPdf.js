@@ -130,7 +130,7 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
     const numoParams = profile ? computeNumoParameters(profile, company) : [];
 
     const scores = db.prepare(`
-      SELECT s.score, p.name as parameter_name
+      SELECT s.score, p.name as parameter_name, p.weightage
       FROM scores s JOIN parameters p ON p.id = s.parameter_id
       JOIN scorecards sc ON sc.id = s.scorecard_id
       WHERE sc.employee_id = ?
