@@ -11,6 +11,7 @@ app.use(express.json());
 app.use('/api/auth',     require('./routes/auth'));
 app.use('/api/admin',    require('./routes/admin'));
 app.use('/api/admin',    require('./routes/numerology'));
+app.use('/api/admin',    require('./routes/numerologyPdf'));
 app.use('/api/admin',    require('./routes/candidateAnalyze'));
 app.use('/api/employee', require('./routes/employee'));
 

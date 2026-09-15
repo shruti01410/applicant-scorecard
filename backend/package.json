@@ -16,6 +16,7 @@
     "mammoth": "^1.12.2",
     "multer": "^2.3.0",
     "pdf-parse": "^2.4.5",
+    "pdfkit": "^0.20.2",
     "word-extractor": "^1.0.4",
     "xlsx": "^0.18.5"
   },

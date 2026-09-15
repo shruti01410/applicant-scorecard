@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   Gem, Compass, Flag, Sparkles, PenLine, Building2,
   ArrowRight, ArrowLeft, Calendar, Lock, ChevronRight, ChevronDown, Check,
-  CheckCircle2, AlertTriangle, Zap, Lightbulb, Heart, ShieldCheck, Eye
+  CheckCircle2, AlertTriangle, Zap, Lightbulb, Heart, ShieldCheck, Eye, Download
 } from "lucide-react";
 import { api } from "../../../services/api";
 
@@ -891,11 +891,16 @@ function FeatureDetail({ feature, onBack }) {
    Screen 5 — Report
 --------------------------------------------------------- */
 
-function ReportScreen({ name, hasDob, scoreValue, cards, onBack, onUnlock }) {
+function ReportScreen({ name, hasDob, scoreValue, cards, onBack, onUnlock, employeeId }) {
   const [activeFeature, setActiveFeature] = useState(null);
 
   if (activeFeature) {
     return <FeatureDetail feature={activeFeature} onBack={() => setActiveFeature(null)} />;
+  }
+
+  function handleDownloadPdf() {
+    const token = localStorage.getItem('token');
+    window.open(`/api/admin/employees/${employeeId}/numerology/pdf${token ? `?token=${token}` : ''}`, '_blank');
   }
 
   return (
@@ -913,7 +918,14 @@ function ReportScreen({ name, hasDob, scoreValue, cards, onBack, onUnlock }) {
         }}>
           <ArrowLeft size={14} /> Back to list
         </button>
-        <div style={{ fontSize: 15, fontWeight: 700, color: "#1c2333" }}>Score: {name}</div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "#1c2333", flex: 1 }}>Score: {name}</div>
+        <button onClick={handleDownloadPdf} style={{
+          background: "#3d5df0", border: "none", borderRadius: 8, padding: "7px 14px",
+          fontSize: 12.5, fontWeight: 600, color: "#fff", cursor: "pointer",
+          display: "flex", alignItems: "center", gap: 6,
+        }}>
+          <Download size={14} /> Download PDF
+        </button>
       </div>
 
       <div style={{ padding: "0 20px", background: "#fff", borderBottom: "1px solid #e7eaf3" }}>
@@ -1225,6 +1237,7 @@ export default function ExactInnerIntelligence({ employeeId }) {
           name={name} hasDob={hasDob} scoreValue={scoreValue} cards={cards}
           onBack={() => setStep("intro")}
           onUnlock={() => setStep("date")}
+          employeeId={employeeId}
         />
       )}
     </div>
