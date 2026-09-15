@@ -46,11 +46,10 @@ const PH = 841.89;
 const CW = PW - 2 * MX;
 const BTM = PH - 50;
 
-const EL_COLORS = { AGNI: '#e3742f', VAYU: '#a5872f', JALA: '#c7607a', AKASHA: '#3d5df0' };
-const EL_NAMES = { AGNI: 'Momentum', VAYU: 'Ideation', JALA: 'Connection', AKASHA: 'Perspective' };
 const CAT_COLORS = { Expression: '#6366f1', Attitude: '#f59e0b', Unmasked: '#06b6d4', Personality: '#8b5cf6', 'Soul Urge': '#ec4899', Masked: '#eab308' };
+const EL_COLORS = { AGNI: '#e3742f', VAYU: '#a5872f', JALA: '#c7607a', AKASHA: '#3d5df0' };
 
-function badge(pct) {
+function bdg(pct) {
   if (pct >= 80) return { label: 'Excellent', color: '#4F8F7D' };
   if (pct >= 60) return { label: 'Good', color: '#3d5df0' };
   if (pct >= 40) return { label: 'Average', color: '#f5a623' };
@@ -102,9 +101,9 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
     `).all(emp.id);
 
     const pct = scores.length ? weightedPct(scores) : null;
-    const bdg = pct != null ? badge(pct) : null;
+    const bdgVal = pct != null ? bdg(pct) : null;
 
-    const conclusion = buildOverallConclusion({ weightedPct: pct, badge: bdg ? bdg.label : '', scores, triNature });
+    const conclusion = buildOverallConclusion({ weightedPct: pct, badge: bdgVal ? bdgVal.label : '', scores, triNature });
 
     const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
@@ -120,12 +119,12 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
 
     let y = 100;
 
-    // SCORE BADGE
-    if (pct != null && pct > 0 && bdg) {
+    // SCORE BADGE (always on top)
+    if (pct != null && pct > 0 && bdgVal) {
       doc.save();
-      doc.roundedRect(MX, y, CW, 52, 8).fill(bdg.color);
+      doc.roundedRect(MX, y, CW, 52, 8).fill(bdgVal.color);
       doc.fontSize(28).fillColor('#ffffff').font('Helvetica-Bold').text(`${pct}%`, MX, y + 8, { width: CW, align: 'center' });
-      doc.fontSize(11).fillColor('#ffffff').font('Helvetica').text(bdg.label, MX, y + 34, { width: CW, align: 'center' });
+      doc.fontSize(11).fillColor('#ffffff').font('Helvetica').text(bdgVal.label, MX, y + 34, { width: CW, align: 'center' });
       doc.restore();
       y += 65;
     }
@@ -134,13 +133,12 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
     if (tri && tri.signature) {
       y = secTitle(doc, y, 'CORE SIGNATURE');
       const sig = tri.signature;
-      const elName = tri.dominantElement ? EL_NAMES[tri.dominantElement] || tri.dominantElement : '';
       doc.save();
-      doc.roundedRect(MX, y, CW, 55, 8).fill('#f2f5ff');
+      doc.roundedRect(MX, y, CW, 45, 8).fill('#f2f5ff');
       doc.fontSize(14).fillColor('#3d5df0').font('Helvetica-Bold').text(sig.name, MX + 12, y + 10, { width: CW - 24 });
-      doc.fontSize(9).fillColor('#5c6580').font('Helvetica').text(`${elName} \u00b7 ${sig.desc || ''}`, MX + 12, y + 30, { width: CW - 24 });
+      doc.fontSize(9).fillColor('#5c6580').font('Helvetica').text(sig.desc || '', MX + 12, y + 28, { width: CW - 24 });
       doc.restore();
-      y += 65;
+      y += 55;
     }
 
     // 6 CATEGORIES
@@ -170,7 +168,68 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
       y += Math.ceil(cats.length / 2) * (catH + catGap) + 10;
     }
 
-    // OVERALL CONCLUSION
+    // BEHAVIORAL DRIVERS (bar graphs, no element names)
+    if (tri && tri.parameters) {
+      y = secTitle(doc, y, 'BEHAVIORAL DRIVERS');
+      const sorted = Object.entries(tri.parameters).sort((a, b) => b[1].score - a[1].score);
+      sorted.forEach(([pname, p]) => {
+        y = pb(doc, y, 18);
+        doc.save();
+        doc.fontSize(8).fillColor('#1c2333').font('Helvetica-Bold').text(pname, MX, y, { width: 130 });
+        doc.fontSize(7.5).fillColor('#8892a8').font('Helvetica').text(`${p.score}/100`, MX + 135, y + 1, { width: 35 });
+        drawBar(doc, MX + 175, y + 1, 275, 7, p.score, EL_COLORS[p.element] || '#3d5df0');
+        doc.restore();
+        y += 12;
+        if (p.light || p.shadow) {
+          doc.save();
+          doc.fontSize(7).fillColor('#5c6580').font('Helvetica-Oblique');
+          const lt = p.light ? `+ ${p.light}` : '';
+          const st = p.shadow ? `! ${p.shadow}` : '';
+          doc.text(`${lt}  ${st}`.trim(), MX + 10, y, { width: CW - 20 });
+          doc.restore();
+          y = doc.y + 3;
+        }
+      });
+      y += 6;
+    }
+
+    // DEEPER PARAMETERS
+    if (numoParams.length) {
+      y = secTitle(doc, y, 'DEEPER PARAMETERS');
+      const avg = numoParams.reduce((s, p) => s + p.score, 0) / numoParams.length;
+      doc.save();
+      doc.roundedRect(MX, y, CW, 22, 4).fill('#f2f5ff');
+      doc.fontSize(9).fillColor('#3d5df0').font('Helvetica-Bold').text(`${Math.round(avg)}/100 avg`, MX + 8, y + 5, { width: CW - 16 });
+      doc.restore();
+      y += 28;
+
+      numoParams.forEach(p => {
+        y = pb(doc, y, 18);
+        doc.save();
+        doc.fontSize(8).fillColor('#1c2333').font('Helvetica-Bold').text(p.name, MX, y, { width: 200 });
+        doc.fontSize(7.5).fillColor('#8892a8').font('Helvetica').text(`${p.score}/5 \u00b7 ${p.outcome || p.resonance || ''}`, MX + 205, y + 1, { width: 150 });
+        drawBar(doc, MX + 360, y + 1, 90, 7, p.score * 20, '#C79A4B');
+        doc.restore();
+        y += 14;
+      });
+      y += 8;
+    }
+
+    // INTERVIEW PREP
+    if (tri && tri.maskedTraits && tri.maskedTraits.length) {
+      y = secTitle(doc, y, 'INTERVIEW PREP');
+      tri.maskedTraits.forEach((m) => {
+        y = pb(doc, y, 48);
+        doc.save();
+        doc.roundedRect(MX, y, CW, 44, 6).fill('#fff8ef').strokeColor('#f2e2c4').lineWidth(0.5).stroke();
+        doc.fontSize(10).fillColor('#a4700e').font('Helvetica-Bold').text(m.trait, MX + 12, y + 6, { width: CW - 24 });
+        doc.fontSize(9).fillColor('#3c4457').font('Helvetica').text(m.prompt, MX + 12, y + 22, { width: CW - 24 });
+        doc.restore();
+        y += 52;
+      });
+    }
+
+    // OVERALL CONCLUSION (always last)
     if (conclusion) {
       y = secTitle(doc, y, 'OVERALL CONCLUSION');
 
@@ -222,103 +281,6 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
         doc.restore();
         y += 65;
       }
-    }
-
-    // BEHAVIORAL DRIVERS
-    if (tri && tri.parameters) {
-      y = secTitle(doc, y, 'BEHAVIORAL DRIVERS');
-      doc.save();
-      doc.fontSize(9).fillColor('#5c6580').font('Helvetica').text('4 elements \u00b7 21 parameters, with strengths and edges, scored and explained.', MX, y, { width: CW });
-      doc.restore();
-      y = doc.y + 8;
-
-      const elGroups = {};
-      Object.entries(tri.parameters).forEach(([pname, p]) => {
-        const el = p.element || 'AKASHA';
-        if (!elGroups[el]) elGroups[el] = [];
-        elGroups[el].push({ name: pname, ...p });
-      });
-
-      const EL_ORDER = ['AGNI', 'VAYU', 'JALA', 'AKASHA'];
-      EL_ORDER.forEach(el => {
-        const params = elGroups[el];
-        if (!params || !params.length) return;
-        params.sort((a, b) => b.score - a.score);
-
-        y = pb(doc, y, 24);
-        doc.save();
-        doc.roundedRect(MX, y, CW, 18, 4).fill(EL_COLORS[el] || '#3d5df0');
-        doc.fontSize(10).fillColor('#ffffff').font('Helvetica-Bold').text(`${EL_NAMES[el] || el} (${el})`, MX + 8, y + 3, { width: CW - 16 });
-        doc.restore();
-        y += 24;
-
-        params.forEach(p => {
-          y = pb(doc, y, 20);
-          doc.save();
-          doc.fontSize(8).fillColor('#1c2333').font('Helvetica-Bold').text(p.name, MX, y, { width: 130 });
-          doc.fontSize(7.5).fillColor('#8892a8').font('Helvetica').text(`${p.score}/100`, MX + 135, y + 1, { width: 35 });
-          drawBar(doc, MX + 175, y + 1, 275, 7, p.score, EL_COLORS[el] || '#3d5df0');
-          doc.restore();
-          y += 12;
-
-          if (p.light || p.shadow) {
-            doc.save();
-            doc.fontSize(7).fillColor('#5c6580').font('Helvetica-Oblique');
-            const lightText = p.light ? `+ ${p.light}` : '';
-            const shadowText = p.shadow ? `! ${p.shadow}` : '';
-            doc.text(`${lightText}  ${shadowText}`.trim(), MX + 10, y, { width: CW - 20 });
-            doc.restore();
-            y = doc.y + 3;
-          }
-        });
-        y += 6;
-      });
-    }
-
-    // DEEPER PARAMETERS
-    if (numoParams.length) {
-      y = secTitle(doc, y, 'DEEPER PARAMETERS');
-      doc.save();
-      doc.fontSize(9).fillColor('#5c6580').font('Helvetica').text('Six additional lenses \u2014 stillness, luck, harmony, destiny, karmic balance, and intuition.', MX, y, { width: CW });
-      doc.restore();
-      y = doc.y + 6;
-
-      const avg = numoParams.reduce((s, p) => s + p.score, 0) / numoParams.length;
-      doc.save();
-      doc.roundedRect(MX, y, CW, 22, 4).fill('#f2f5ff');
-      doc.fontSize(9).fillColor('#3d5df0').font('Helvetica-Bold').text(`${Math.round(avg)}/100 avg`, MX + 8, y + 5, { width: CW - 16 });
-      doc.restore();
-      y += 28;
-
-      numoParams.forEach(p => {
-        y = pb(doc, y, 18);
-        doc.save();
-        doc.fontSize(8).fillColor('#1c2333').font('Helvetica-Bold').text(p.name, MX, y, { width: 200 });
-        doc.fontSize(7.5).fillColor('#8892a8').font('Helvetica').text(`${p.score}/5 \u00b7 ${p.outcome || p.resonance || ''}`, MX + 205, y + 1, { width: 150 });
-        drawBar(doc, MX + 360, y + 1, 90, 7, p.score * 20, '#C79A4B');
-        doc.restore();
-        y += 14;
-      });
-      y += 8;
-    }
-
-    // MASKED TRAITS (Interview Prep)
-    if (tri && tri.maskedTraits && tri.maskedTraits.length) {
-      y = secTitle(doc, y, 'INTERVIEW PREP');
-      doc.save();
-      doc.fontSize(9).fillColor('#5c6580').font('Helvetica').text('3 conversation openers from this candidate\'s own signals.', MX, y, { width: CW });
-      doc.restore();
-      y = doc.y + 6;
-
-      tri.maskedTraits.forEach((m) => {
-        y = pb(doc, y, 48);
-        doc.save();
-        doc.roundedRect(MX, y, CW, 44, 6).fill('#fff8ef').strokeColor('#f2e2c4').lineWidth(0.5).stroke();
-        doc.fontSize(10).fillColor('#a4700e').font('Helvetica-Bold').text(m.trait, MX + 12, y + 6, { width: CW - 24 });
-        doc.fontSize(9).fillColor('#3c4457').font('Helvetica').text(m.prompt, MX + 12, y + 22, { width: CW - 24 });
-        doc.restore();
-        y += 52;
-      });
     }
 
     // FOOTER
