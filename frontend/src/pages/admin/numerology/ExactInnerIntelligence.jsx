@@ -714,8 +714,7 @@ function CardDetail({ card }) {
             <div style={{ fontSize: 19, fontWeight: 700, color: "#1c2333" }}>{card.sig?.name || "—"}</div>
             <div style={{ fontSize: 13, color: "#5c6580", marginTop: 4 }}>{card.sig?.desc || ""}</div>
           </div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#5c6580", marginBottom: 10 }}>DRIVE MODES</div>
-          <PieChart data={card.triguna} />
+
           <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
             <div style={{ flex: 1, minWidth: 140, background: "#f4fbf6", border: "1px solid #dcefe1", borderRadius: 10, padding: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "#2f7a52", marginBottom: 6 }}>Light signals</div>
