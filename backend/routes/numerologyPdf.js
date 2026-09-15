@@ -123,47 +123,15 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
       y += 65;
     }
 
-    if (core.lifePath || core.expression) {
-      y = drawSectionTitle(doc, y, 'CORE NUMBERS');
-      const nums = [
-        { label: 'Life Path', value: core.lifePath },
-        { label: 'Birth Day', value: core.birthDay },
-        { label: 'Expression', value: core.expression },
-        { label: 'Soul Urge', value: core.soulUrge },
-        { label: 'Personality', value: core.personality },
-        { label: 'Attitude', value: core.attitude },
-        { label: 'Maturity', value: core.maturity },
-        { label: 'Balance', value: core.balance },
-      ].filter(n => n.value != null);
-
-      const cellW = 115;
-      const cellH = 38;
-      const gap = 10;
-      const cols = 4;
-      nums.forEach((n, i) => {
-        const col = i % cols;
-        const row = Math.floor(i / cols);
-        const nx = MARGIN + col * (cellW + gap);
-        const ny = y + row * (cellH + gap);
-        doc.save();
-        doc.roundedRect(nx, ny, cellW, cellH, 6).fill('#f2f5ff');
-        doc.fontSize(9).fillColor('#8892a8').font('Helvetica').text(n.label, nx + 8, ny + 6, { width: cellW - 16 });
-        doc.fontSize(16).fillColor('#3d5df0').font('Helvetica-Bold').text(String(n.value), nx + 8, ny + 20, { width: cellW - 16 });
-        doc.restore();
-      });
-      y += Math.ceil(nums.length / cols) * (cellH + gap) + 12;
-      doc.y = y;
-    }
-
     if (triNature.signature) {
       y = drawSectionTitle(doc, y, 'SIGNATURE');
       const sig = triNature.signature;
       doc.save();
-      doc.roundedRect(MARGIN, y, CONTENT_W, 50, 8).fill('#f2f5ff');
-      doc.fontSize(13).fillColor('#3d5df0').font('Helvetica-Bold').text(sig.name, MARGIN + 12, y + 8, { width: CONTENT_W - 24 });
-      doc.fontSize(9).fillColor('#5c6580').font('Helvetica').text(sig.desc, MARGIN + 12, y + 26, { width: CONTENT_W - 24 });
+      doc.roundedRect(MARGIN, y, CONTENT_W, 70, 8).fill('#f2f5ff');
+      doc.fontSize(13).fillColor('#3d5df0').font('Helvetica-Bold').text(sig.name, MARGIN + 12, y + 10, { width: CONTENT_W - 24 });
+      doc.fontSize(9).fillColor('#5c6580').font('Helvetica').text(sig.desc, MARGIN + 12, doc.y + 2, { width: CONTENT_W - 24 });
       doc.restore();
-      y += 60;
+      y = doc.y + 10;
       doc.y = y;
     }
 
