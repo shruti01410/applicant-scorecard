@@ -57,7 +57,7 @@ function getBadge(pct) {
   return { label: 'Needs Improvement', color: '#B97D68' };
 }
 
-function drawScoreBar(doc, x, y, w, h, score, color) {
+function bar(doc, x, y, w, h, score, color) {
   doc.save();
   doc.roundedRect(x, y, w, h, h / 2).fill('#eef0f7');
   const barW = Math.max(0, Math.min(w, (Math.min(100, Math.max(0, score)) / 100) * w));
@@ -65,13 +65,19 @@ function drawScoreBar(doc, x, y, w, h, score, color) {
   doc.restore();
 }
 
-function drawSectionTitle(doc, y, title) {
+function title(doc, y, text) {
+  if (y + 30 > BOTTOM) { doc.addPage(); y = MARGIN; }
   doc.save();
-  doc.fontSize(14).fillColor('#1c2333').font('Helvetica-Bold').text(title, MARGIN, y, { width: CONTENT_W });
-  y = doc.y + 4;
-  doc.moveTo(MARGIN, y).lineTo(PAGE_W - MARGIN, y).lineWidth(1).strokeColor('#3d5df0').stroke();
+  doc.fontSize(14).fillColor('#1c2333').font('Helvetica-Bold').text(text, MARGIN, y, { width: CONTENT_W });
+  const lineY = doc.y + 4;
+  doc.moveTo(MARGIN, lineY).lineTo(PAGE_W - MARGIN, lineY).lineWidth(1).strokeColor('#3d5df0').stroke();
   doc.restore();
-  return y + 10;
+  return lineY + 10;
+}
+
+function pageBreak(doc, y, needed) {
+  if (y + needed > BOTTOM) { doc.addPage(); return MARGIN; }
+  return y;
 }
 
 router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
@@ -84,7 +90,6 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
     const dob = profile ? profile.date_of_birth : null;
 
     const triNature = computeTriNature(name, dob);
-    const core = triNature.core || buildCoreNumbers(name, dob);
 
     const company = db.prepare('SELECT * FROM company_numerology_profiles ORDER BY id LIMIT 1').get();
     const numoParams = profile ? computeNumoParameters(profile, company) : [];
@@ -124,19 +129,18 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
     }
 
     if (triNature.signature) {
-      y = drawSectionTitle(doc, y, 'SIGNATURE');
+      y = title(doc, y, 'SIGNATURE');
       const sig = triNature.signature;
       doc.save();
       doc.roundedRect(MARGIN, y, CONTENT_W, 70, 8).fill('#f2f5ff');
       doc.fontSize(13).fillColor('#3d5df0').font('Helvetica-Bold').text(sig.name, MARGIN + 12, y + 10, { width: CONTENT_W - 24 });
       doc.fontSize(9).fillColor('#5c6580').font('Helvetica').text(sig.desc, MARGIN + 12, doc.y + 2, { width: CONTENT_W - 24 });
       doc.restore();
-      y = doc.y + 10;
-      doc.y = y;
+      y = doc.y + 12;
     }
 
     if (triNature.categories) {
-      y = drawSectionTitle(doc, y, '6 CATEGORIES');
+      y = title(doc, y, '6 CATEGORIES');
       const cats = Object.entries(triNature.categories);
       const halfW = (CONTENT_W - 10) / 2;
       const catH = 50;
@@ -146,14 +150,12 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
         const row = Math.floor(i / 2);
         const cx = MARGIN + col * (halfW + 10);
         const cy = y + row * (catH + catGap);
-        if (cy + catH > BOTTOM) { doc.addPage(); y = MARGIN; }
-
         doc.save();
         doc.roundedRect(cx, cy, halfW, catH, 6).fill('#f9fafc').strokeColor('#eceef5').lineWidth(0.5).stroke();
         doc.fontSize(10).fillColor('#1c2333').font('Helvetica-Bold').text(cat.name, cx + 10, cy + 6, { width: halfW - 80 });
         if (cat.score != null) {
           doc.fontSize(11).fillColor(cat.score >= 70 ? '#2f7a52' : cat.score >= 40 ? '#a4700e' : '#8892a8').font('Helvetica-Bold').text(`${cat.score}`, cx + halfW - 50, cy + 5, { width: 40, align: 'right' });
-          drawScoreBar(doc, cx + 10, cy + 26, halfW - 20, 8, cat.score, CAT_COLORS[key] || '#3d5df0');
+          bar(doc, cx + 10, cy + 26, halfW - 20, 8, cat.score, CAT_COLORS[key] || '#3d5df0');
         } else {
           doc.fontSize(8).fillColor('#8892a8').font('Helvetica-Oblique').text('Interview-only', cx + halfW - 75, cy + 6, { width: 65, align: 'right' });
         }
@@ -161,13 +163,12 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
         doc.restore();
       });
       y += Math.ceil(cats.length / 2) * (catH + catGap) + 10;
-      doc.y = y;
     }
 
     if (triNature.maskedTraits && triNature.maskedTraits.length) {
-      y = drawSectionTitle(doc, y, 'MASKED TRAITS \u2014 INTERVIEW SCENARIOS');
+      y = title(doc, y, 'MASKED TRAITS \u2014 INTERVIEW SCENARIOS');
       triNature.maskedTraits.forEach((m) => {
-        if (y + 50 > BOTTOM) { doc.addPage(); y = MARGIN; }
+        y = pageBreak(doc, y, 50);
         doc.save();
         doc.roundedRect(MARGIN, y, CONTENT_W, 44, 6).fill('#fff8ef').strokeColor('#f2e2c4').lineWidth(0.5).stroke();
         doc.fontSize(10).fillColor('#a4700e').font('Helvetica-Bold').text(m.trait, MARGIN + 12, y + 6, { width: CONTENT_W - 24 });
@@ -176,63 +177,59 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
         y += 52;
       });
       y += 8;
-      doc.y = y;
     }
 
     if (triNature.elements) {
-      y = drawSectionTitle(doc, y, 'ELEMENT SCORES');
+      y = title(doc, y, 'ELEMENT SCORES');
       Object.entries(triNature.elements).sort((a, b) => b[1] - a[1]).forEach(([el, score]) => {
-        if (y + 20 > BOTTOM) { doc.addPage(); y = MARGIN; }
+        y = pageBreak(doc, y, 22);
         doc.save();
         doc.fontSize(10).fillColor('#3c4457').font('Helvetica-Bold').text(ELEMENT_NAMES[el] || el, MARGIN, y, { width: 120 });
         doc.fontSize(9).fillColor('#8892a8').font('Helvetica').text(`${score}/100`, MARGIN + 125, y + 1, { width: 45 });
-        drawScoreBar(doc, MARGIN + 175, y + 2, 280, 10, score, ELEMENT_COLORS[el] || '#3d5df0');
+        bar(doc, MARGIN + 175, y + 2, 280, 10, score, ELEMENT_COLORS[el] || '#3d5df0');
         doc.restore();
         y += 22;
       });
       y += 10;
-      doc.y = y;
     }
 
     if (triNature.parameters) {
-      y = drawSectionTitle(doc, y, 'BEHAVIORAL PARAMETERS');
+      y = title(doc, y, 'BEHAVIORAL PARAMETERS');
       Object.entries(triNature.parameters).sort((a, b) => b[1].score - a[1].score).forEach(([pname, p]) => {
-        if (y + 16 > BOTTOM) { doc.addPage(); y = MARGIN; }
+        y = pageBreak(doc, y, 16);
         doc.save();
         doc.fontSize(8).fillColor('#1c2333').font('Helvetica-Bold').text(pname, MARGIN, y, { width: 140 });
         doc.fontSize(7.5).fillColor('#8892a8').font('Helvetica').text(`${p.score}/100`, MARGIN + 145, y + 1, { width: 40 });
-        drawScoreBar(doc, MARGIN + 190, y + 1, 260, 7, p.score, ELEMENT_COLORS[p.element] || '#3d5df0');
+        bar(doc, MARGIN + 190, y + 1, 260, 7, p.score, ELEMENT_COLORS[p.element] || '#3d5df0');
         doc.restore();
         y += 14;
       });
       y += 10;
-      doc.y = y;
     }
 
     if (numoParams.length) {
-      y = drawSectionTitle(doc, y, 'NUMEROLOGY LENSES');
+      y = title(doc, y, 'NUMEROLOGY LENSES');
       numoParams.forEach(p => {
-        if (y + 16 > BOTTOM) { doc.addPage(); y = MARGIN; }
+        y = pageBreak(doc, y, 16);
         doc.save();
         doc.fontSize(8).fillColor('#1c2333').font('Helvetica-Bold').text(p.name, MARGIN, y, { width: 200 });
         doc.fontSize(7.5).fillColor('#8892a8').font('Helvetica').text(`${p.score}/5 \u00b7 ${p.outcome || p.resonance || ''}`, MARGIN + 205, y + 1, { width: 150 });
-        drawScoreBar(doc, MARGIN + 360, y + 1, 90, 7, p.score * 20, '#C79A4B');
+        bar(doc, MARGIN + 360, y + 1, 90, 7, p.score * 20, '#C79A4B');
         doc.restore();
         y += 14;
       });
       y += 10;
-      doc.y = y;
     }
 
     if (conclusion) {
-      y = drawSectionTitle(doc, y, 'OVERALL CONCLUSION');
+      y = title(doc, y, 'OVERALL CONCLUSION');
 
       if (conclusion.greenFlags && conclusion.greenFlags.length) {
         doc.save();
         doc.fontSize(10).fillColor('#2f7a52').font('Helvetica-Bold').text('Green Flags', MARGIN, y, { width: CONTENT_W });
         y = doc.y + 4;
         conclusion.greenFlags.forEach(g => {
-          if (y + 14 > BOTTOM) { doc.addPage(); y = MARGIN; }
+          y = pageBreak(doc, y, 14);
           doc.fontSize(8).fillColor('#3c4457').font('Helvetica').text(`\u2022 ${g.name} (${g.score}) \u2014 ${g.reason}`, MARGIN, y, { width: CONTENT_W - 20 });
           y = doc.y + 3;
         });
@@ -245,7 +242,7 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
         doc.fontSize(10).fillColor('#a4700e').font('Helvetica-Bold').text('Worth Exploring', MARGIN, y, { width: CONTENT_W });
         y = doc.y + 4;
         conclusion.redFlags.forEach(r => {
-          if (y + 14 > BOTTOM) { doc.addPage(); y = MARGIN; }
+          y = pageBreak(doc, y, 14);
           doc.fontSize(8).fillColor('#3c4457').font('Helvetica').text(`\u2022 ${r.name} (${r.score}) \u2014 ${r.reason}`, MARGIN, y, { width: CONTENT_W - 20 });
           y = doc.y + 3;
         });
@@ -258,7 +255,7 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
         doc.fontSize(10).fillColor('#C79A4B').font('Helvetica-Bold').text('Best Parts', MARGIN, y, { width: CONTENT_W });
         y = doc.y + 4;
         conclusion.bestParts.forEach(b => {
-          if (y + 14 > BOTTOM) { doc.addPage(); y = MARGIN; }
+          y = pageBreak(doc, y, 14);
           doc.fontSize(8).fillColor('#3c4457').font('Helvetica').text(`\u2022 ${b}`, MARGIN, y, { width: CONTENT_W - 20 });
           y = doc.y + 3;
         });
@@ -267,7 +264,7 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
       }
 
       if (conclusion.finalVerdict) {
-        if (y + 70 > BOTTOM) { doc.addPage(); y = MARGIN; }
+        y = pageBreak(doc, y, 70);
         doc.save();
         doc.roundedRect(MARGIN, y, CONTENT_W, 60, 8).fill('#f7f8fc');
         doc.fontSize(10).fillColor('#1c2333').font('Helvetica-Bold').text('Final Verdict', MARGIN + 12, y + 8, { width: CONTENT_W - 24 });
@@ -275,7 +272,6 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
         doc.restore();
         y += 70;
       }
-      doc.y = y;
     }
 
     doc.save();
