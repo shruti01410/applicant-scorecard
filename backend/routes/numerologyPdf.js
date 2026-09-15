@@ -1,7 +1,7 @@
 const express = require('express');
 const PDFDocument = require('pdfkit');
 const jwt = require('jsonwebtoken');
-const { computeTriNature, buildCoreNumbers } = require('../triNatureEngine');
+const { computeTriNature, buildCoreNumbers, CATEGORIES, MASKED_SCENARIOS } = require('../triNatureEngine');
 const { computeNumoParameters } = require('../numerologyUtils');
 const { buildOverallConclusion } = require('../overallConclusion');
 const { weightedPct } = require('../scoreUtils');
@@ -40,43 +40,43 @@ function getProfile(employeeId) {
   return null;
 }
 
-const MARGIN = 50;
-const PAGE_W = 595.28;
-const PAGE_H = 841.89;
-const CONTENT_W = PAGE_W - 2 * MARGIN;
-const BOTTOM = PAGE_H - 50;
+const MX = 50;
+const PW = 595.28;
+const PH = 841.89;
+const CW = PW - 2 * MX;
+const BTM = PH - 50;
 
-const ELEMENT_COLORS = { AGNI: '#e3742f', VAYU: '#a5872f', JALA: '#c7607a', AKASHA: '#3d5df0' };
-const ELEMENT_NAMES = { AGNI: 'Momentum', VAYU: 'Ideation', JALA: 'Connection', AKASHA: 'Perspective' };
+const EL_COLORS = { AGNI: '#e3742f', VAYU: '#a5872f', JALA: '#c7607a', AKASHA: '#3d5df0' };
+const EL_NAMES = { AGNI: 'Momentum', VAYU: 'Ideation', JALA: 'Connection', AKASHA: 'Perspective' };
 const CAT_COLORS = { Expression: '#6366f1', Attitude: '#f59e0b', Unmasked: '#06b6d4', Personality: '#8b5cf6', 'Soul Urge': '#ec4899', Masked: '#eab308' };
 
-function getBadge(pct) {
+function badge(pct) {
   if (pct >= 80) return { label: 'Excellent', color: '#4F8F7D' };
   if (pct >= 60) return { label: 'Good', color: '#3d5df0' };
   if (pct >= 40) return { label: 'Average', color: '#f5a623' };
   return { label: 'Needs Improvement', color: '#B97D68' };
 }
 
-function bar(doc, x, y, w, h, score, color) {
+function drawBar(doc, x, y, w, h, score, color) {
   doc.save();
   doc.roundedRect(x, y, w, h, h / 2).fill('#eef0f7');
-  const barW = Math.max(0, Math.min(w, (Math.min(100, Math.max(0, score)) / 100) * w));
-  if (barW > 0) doc.roundedRect(x, y, barW, h, h / 2).fill(color);
+  const bw = Math.max(0, Math.min(w, (Math.min(100, Math.max(0, score)) / 100) * w));
+  if (bw > 0) doc.roundedRect(x, y, bw, h, h / 2).fill(color);
   doc.restore();
 }
 
-function title(doc, y, text) {
-  if (y + 30 > BOTTOM) { doc.addPage(); y = MARGIN; }
+function secTitle(doc, y, text) {
+  if (y + 28 > BTM) { doc.addPage(); y = MX; }
   doc.save();
-  doc.fontSize(14).fillColor('#1c2333').font('Helvetica-Bold').text(text, MARGIN, y, { width: CONTENT_W });
-  const lineY = doc.y + 4;
-  doc.moveTo(MARGIN, lineY).lineTo(PAGE_W - MARGIN, lineY).lineWidth(1).strokeColor('#3d5df0').stroke();
+  doc.fontSize(13).fillColor('#1c2333').font('Helvetica-Bold').text(text, MX, y, { width: CW });
+  const ly = doc.y + 3;
+  doc.moveTo(MX, ly).lineTo(PW - MX, ly).lineWidth(1).strokeColor('#3d5df0').stroke();
   doc.restore();
-  return lineY + 10;
+  return ly + 8;
 }
 
-function pageBreak(doc, y, needed) {
-  if (y + needed > BOTTOM) { doc.addPage(); return MARGIN; }
+function pb(doc, y, need) {
+  if (y + need > BTM) { doc.addPage(); return MX; }
   return y;
 }
 
@@ -88,8 +88,8 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
     const profile = getProfile(emp.id);
     const name = profile ? (profile.numerology_name || profile.full_name || emp.name) : emp.name;
     const dob = profile ? profile.date_of_birth : null;
-
     const triNature = computeTriNature(name, dob);
+    const tri = triNature.hasProfile ? triNature : null;
 
     const company = db.prepare('SELECT * FROM company_numerology_profiles ORDER BY id LIMIT 1').get();
     const numoParams = profile ? computeNumoParameters(profile, company) : [];
@@ -102,60 +102,65 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
     `).all(emp.id);
 
     const pct = scores.length ? weightedPct(scores) : null;
-    const badge = pct != null ? getBadge(pct) : null;
+    const bdg = pct != null ? badge(pct) : null;
 
-    const conclusion = buildOverallConclusion({ weightedPct: pct, badge: badge ? badge.label : '', scores, triNature });
+    const conclusion = buildOverallConclusion({ weightedPct: pct, badge: bdg ? bdg.label : '', scores, triNature });
 
     const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
-    const doc = new PDFDocument({ size: 'A4', margin: MARGIN, bufferPages: true });
+    const doc = new PDFDocument({ size: 'A4', margin: MX, bufferPages: true });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${name.replace(/[^a-zA-Z0-9]/g, '_')}_report.pdf"`);
     doc.pipe(res);
 
-    doc.rect(0, 0, PAGE_W, 80).fill('#1B1D25');
-    doc.fontSize(20).fillColor('#ffffff').font('Helvetica-Bold').text('Inner Intelligence Report', MARGIN, 20, { width: CONTENT_W });
-    doc.fontSize(11).fillColor('#C79A4B').font('Helvetica').text(`${name}  |  ${dob || 'No DOB'}  |  ${today}`, MARGIN, 48, { width: CONTENT_W });
+    // HEADER
+    doc.rect(0, 0, PW, 80).fill('#1B1D25');
+    doc.fontSize(20).fillColor('#ffffff').font('Helvetica-Bold').text('Inner Intelligence Report', MX, 20, { width: CW });
+    doc.fontSize(11).fillColor('#C79A4B').font('Helvetica').text(`${name}  |  ${dob || 'No DOB'}  |  ${today}`, MX, 48, { width: CW });
 
     let y = 100;
 
-    if (pct != null && pct > 0 && badge) {
+    // SCORE BADGE
+    if (pct != null && pct > 0 && bdg) {
       doc.save();
-      doc.roundedRect(MARGIN, y, CONTENT_W, 52, 8).fill(badge.color);
-      doc.fontSize(28).fillColor('#ffffff').font('Helvetica-Bold').text(`${pct}%`, MARGIN, y + 8, { width: CONTENT_W, align: 'center' });
-      doc.fontSize(11).fillColor('#ffffff').font('Helvetica').text(badge.label, MARGIN, y + 34, { width: CONTENT_W, align: 'center' });
+      doc.roundedRect(MX, y, CW, 52, 8).fill(bdg.color);
+      doc.fontSize(28).fillColor('#ffffff').font('Helvetica-Bold').text(`${pct}%`, MX, y + 8, { width: CW, align: 'center' });
+      doc.fontSize(11).fillColor('#ffffff').font('Helvetica').text(bdg.label, MX, y + 34, { width: CW, align: 'center' });
       doc.restore();
       y += 65;
     }
 
-    if (triNature.signature) {
-      y = title(doc, y, 'SIGNATURE');
-      const sig = triNature.signature;
+    // CORE SIGNATURE
+    if (tri && tri.signature) {
+      y = secTitle(doc, y, 'CORE SIGNATURE');
+      const sig = tri.signature;
+      const elName = tri.dominantElement ? EL_NAMES[tri.dominantElement] || tri.dominantElement : '';
       doc.save();
-      doc.roundedRect(MARGIN, y, CONTENT_W, 70, 8).fill('#f2f5ff');
-      doc.fontSize(13).fillColor('#3d5df0').font('Helvetica-Bold').text(sig.name, MARGIN + 12, y + 10, { width: CONTENT_W - 24 });
-      doc.fontSize(9).fillColor('#5c6580').font('Helvetica').text(sig.desc, MARGIN + 12, doc.y + 2, { width: CONTENT_W - 24 });
+      doc.roundedRect(MX, y, CW, 55, 8).fill('#f2f5ff');
+      doc.fontSize(14).fillColor('#3d5df0').font('Helvetica-Bold').text(sig.name, MX + 12, y + 10, { width: CW - 24 });
+      doc.fontSize(9).fillColor('#5c6580').font('Helvetica').text(`${elName} \u00b7 ${sig.desc || ''}`, MX + 12, y + 30, { width: CW - 24 });
       doc.restore();
-      y = doc.y + 12;
+      y += 65;
     }
 
-    if (triNature.categories) {
-      y = title(doc, y, '6 CATEGORIES');
-      const cats = Object.entries(triNature.categories);
-      const halfW = (CONTENT_W - 10) / 2;
+    // 6 CATEGORIES
+    if (tri && tri.categories) {
+      y = secTitle(doc, y, '6 CATEGORIES');
+      const cats = Object.entries(tri.categories);
+      const halfW = (CW - 10) / 2;
       const catH = 50;
       const catGap = 8;
       cats.forEach(([key, cat], i) => {
         const col = i % 2;
         const row = Math.floor(i / 2);
-        const cx = MARGIN + col * (halfW + 10);
+        const cx = MX + col * (halfW + 10);
         const cy = y + row * (catH + catGap);
         doc.save();
         doc.roundedRect(cx, cy, halfW, catH, 6).fill('#f9fafc').strokeColor('#eceef5').lineWidth(0.5).stroke();
         doc.fontSize(10).fillColor('#1c2333').font('Helvetica-Bold').text(cat.name, cx + 10, cy + 6, { width: halfW - 80 });
         if (cat.score != null) {
           doc.fontSize(11).fillColor(cat.score >= 70 ? '#2f7a52' : cat.score >= 40 ? '#a4700e' : '#8892a8').font('Helvetica-Bold').text(`${cat.score}`, cx + halfW - 50, cy + 5, { width: 40, align: 'right' });
-          bar(doc, cx + 10, cy + 26, halfW - 20, 8, cat.score, CAT_COLORS[key] || '#3d5df0');
+          drawBar(doc, cx + 10, cy + 26, halfW - 20, 8, cat.score, CAT_COLORS[key] || '#3d5df0');
         } else {
           doc.fontSize(8).fillColor('#8892a8').font('Helvetica-Oblique').text('Interview-only', cx + halfW - 75, cy + 6, { width: 65, align: 'right' });
         }
@@ -165,119 +170,162 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
       y += Math.ceil(cats.length / 2) * (catH + catGap) + 10;
     }
 
-    if (triNature.maskedTraits && triNature.maskedTraits.length) {
-      y = title(doc, y, 'MASKED TRAITS \u2014 INTERVIEW SCENARIOS');
-      triNature.maskedTraits.forEach((m) => {
-        y = pageBreak(doc, y, 50);
-        doc.save();
-        doc.roundedRect(MARGIN, y, CONTENT_W, 44, 6).fill('#fff8ef').strokeColor('#f2e2c4').lineWidth(0.5).stroke();
-        doc.fontSize(10).fillColor('#a4700e').font('Helvetica-Bold').text(m.trait, MARGIN + 12, y + 6, { width: CONTENT_W - 24 });
-        doc.fontSize(9).fillColor('#3c4457').font('Helvetica').text(m.prompt, MARGIN + 12, y + 22, { width: CONTENT_W - 24 });
-        doc.restore();
-        y += 52;
-      });
-      y += 8;
-    }
-
-    if (triNature.elements) {
-      y = title(doc, y, 'ELEMENT SCORES');
-      Object.entries(triNature.elements).sort((a, b) => b[1] - a[1]).forEach(([el, score]) => {
-        y = pageBreak(doc, y, 22);
-        doc.save();
-        doc.fontSize(10).fillColor('#3c4457').font('Helvetica-Bold').text(ELEMENT_NAMES[el] || el, MARGIN, y, { width: 120 });
-        doc.fontSize(9).fillColor('#8892a8').font('Helvetica').text(`${score}/100`, MARGIN + 125, y + 1, { width: 45 });
-        bar(doc, MARGIN + 175, y + 2, 280, 10, score, ELEMENT_COLORS[el] || '#3d5df0');
-        doc.restore();
-        y += 22;
-      });
-      y += 10;
-    }
-
-    if (triNature.parameters) {
-      y = title(doc, y, 'BEHAVIORAL PARAMETERS');
-      Object.entries(triNature.parameters).sort((a, b) => b[1].score - a[1].score).forEach(([pname, p]) => {
-        y = pageBreak(doc, y, 16);
-        doc.save();
-        doc.fontSize(8).fillColor('#1c2333').font('Helvetica-Bold').text(pname, MARGIN, y, { width: 140 });
-        doc.fontSize(7.5).fillColor('#8892a8').font('Helvetica').text(`${p.score}/100`, MARGIN + 145, y + 1, { width: 40 });
-        bar(doc, MARGIN + 190, y + 1, 260, 7, p.score, ELEMENT_COLORS[p.element] || '#3d5df0');
-        doc.restore();
-        y += 14;
-      });
-      y += 10;
-    }
-
-    if (numoParams.length) {
-      y = title(doc, y, 'NUMEROLOGY LENSES');
-      numoParams.forEach(p => {
-        y = pageBreak(doc, y, 16);
-        doc.save();
-        doc.fontSize(8).fillColor('#1c2333').font('Helvetica-Bold').text(p.name, MARGIN, y, { width: 200 });
-        doc.fontSize(7.5).fillColor('#8892a8').font('Helvetica').text(`${p.score}/5 \u00b7 ${p.outcome || p.resonance || ''}`, MARGIN + 205, y + 1, { width: 150 });
-        bar(doc, MARGIN + 360, y + 1, 90, 7, p.score * 20, '#C79A4B');
-        doc.restore();
-        y += 14;
-      });
-      y += 10;
-    }
-
+    // OVERALL CONCLUSION
     if (conclusion) {
-      y = title(doc, y, 'OVERALL CONCLUSION');
+      y = secTitle(doc, y, 'OVERALL CONCLUSION');
 
       if (conclusion.greenFlags && conclusion.greenFlags.length) {
         doc.save();
-        doc.fontSize(10).fillColor('#2f7a52').font('Helvetica-Bold').text('Green Flags', MARGIN, y, { width: CONTENT_W });
-        y = doc.y + 4;
+        doc.fontSize(10).fillColor('#2f7a52').font('Helvetica-Bold').text('Green Flags', MX, y, { width: CW });
+        y = doc.y + 3;
         conclusion.greenFlags.forEach(g => {
-          y = pageBreak(doc, y, 14);
-          doc.fontSize(8).fillColor('#3c4457').font('Helvetica').text(`\u2022 ${g.name} (${g.score}) \u2014 ${g.reason}`, MARGIN, y, { width: CONTENT_W - 20 });
-          y = doc.y + 3;
+          y = pb(doc, y, 14);
+          doc.fontSize(8).fillColor('#3c4457').font('Helvetica').text(`\u2022 ${g.name} (${g.score}) \u2014 ${g.reason}`, MX, y, { width: CW - 20 });
+          y = doc.y + 2;
         });
         doc.restore();
-        y += 8;
+        y += 6;
       }
 
       if (conclusion.redFlags && conclusion.redFlags.length) {
         doc.save();
-        doc.fontSize(10).fillColor('#a4700e').font('Helvetica-Bold').text('Worth Exploring', MARGIN, y, { width: CONTENT_W });
-        y = doc.y + 4;
+        doc.fontSize(10).fillColor('#a4700e').font('Helvetica-Bold').text('Worth Exploring', MX, y, { width: CW });
+        y = doc.y + 3;
         conclusion.redFlags.forEach(r => {
-          y = pageBreak(doc, y, 14);
-          doc.fontSize(8).fillColor('#3c4457').font('Helvetica').text(`\u2022 ${r.name} (${r.score}) \u2014 ${r.reason}`, MARGIN, y, { width: CONTENT_W - 20 });
-          y = doc.y + 3;
+          y = pb(doc, y, 14);
+          doc.fontSize(8).fillColor('#3c4457').font('Helvetica').text(`\u2022 ${r.name} (${r.score}) \u2014 ${r.reason}`, MX, y, { width: CW - 20 });
+          y = doc.y + 2;
         });
         doc.restore();
-        y += 8;
+        y += 6;
       }
 
       if (conclusion.bestParts && conclusion.bestParts.length) {
         doc.save();
-        doc.fontSize(10).fillColor('#C79A4B').font('Helvetica-Bold').text('Best Parts', MARGIN, y, { width: CONTENT_W });
-        y = doc.y + 4;
+        doc.fontSize(10).fillColor('#C79A4B').font('Helvetica-Bold').text('Best Parts', MX, y, { width: CW });
+        y = doc.y + 3;
         conclusion.bestParts.forEach(b => {
-          y = pageBreak(doc, y, 14);
-          doc.fontSize(8).fillColor('#3c4457').font('Helvetica').text(`\u2022 ${b}`, MARGIN, y, { width: CONTENT_W - 20 });
-          y = doc.y + 3;
+          y = pb(doc, y, 14);
+          doc.fontSize(8).fillColor('#3c4457').font('Helvetica').text(`\u2022 ${b}`, MX, y, { width: CW - 20 });
+          y = doc.y + 2;
         });
         doc.restore();
-        y += 8;
+        y += 6;
       }
 
       if (conclusion.finalVerdict) {
-        y = pageBreak(doc, y, 70);
+        y = pb(doc, y, 70);
         doc.save();
-        doc.roundedRect(MARGIN, y, CONTENT_W, 60, 8).fill('#f7f8fc');
-        doc.fontSize(10).fillColor('#1c2333').font('Helvetica-Bold').text('Final Verdict', MARGIN + 12, y + 8, { width: CONTENT_W - 24 });
-        doc.fontSize(8).fillColor('#3c4457').font('Helvetica').text(conclusion.finalVerdict, MARGIN + 12, y + 24, { width: CONTENT_W - 24 });
+        doc.roundedRect(MX, y, CW, 55, 8).fill('#f7f8fc');
+        doc.fontSize(10).fillColor('#1c2333').font('Helvetica-Bold').text('Final Verdict', MX + 12, y + 8, { width: CW - 24 });
+        doc.fontSize(8).fillColor('#3c4457').font('Helvetica').text(conclusion.finalVerdict, MX + 12, y + 22, { width: CW - 24 });
         doc.restore();
-        y += 70;
+        y += 65;
       }
     }
 
+    // BEHAVIORAL DRIVERS
+    if (tri && tri.parameters) {
+      y = secTitle(doc, y, 'BEHAVIORAL DRIVERS');
+      doc.save();
+      doc.fontSize(9).fillColor('#5c6580').font('Helvetica').text('4 elements \u00b7 21 parameters, with strengths and edges, scored and explained.', MX, y, { width: CW });
+      doc.restore();
+      y = doc.y + 8;
+
+      const elGroups = {};
+      Object.entries(tri.parameters).forEach(([pname, p]) => {
+        const el = p.element || 'AKASHA';
+        if (!elGroups[el]) elGroups[el] = [];
+        elGroups[el].push({ name: pname, ...p });
+      });
+
+      const EL_ORDER = ['AGNI', 'VAYU', 'JALA', 'AKASHA'];
+      EL_ORDER.forEach(el => {
+        const params = elGroups[el];
+        if (!params || !params.length) return;
+        params.sort((a, b) => b.score - a.score);
+
+        y = pb(doc, y, 24);
+        doc.save();
+        doc.roundedRect(MX, y, CW, 18, 4).fill(EL_COLORS[el] || '#3d5df0');
+        doc.fontSize(10).fillColor('#ffffff').font('Helvetica-Bold').text(`${EL_NAMES[el] || el} (${el})`, MX + 8, y + 3, { width: CW - 16 });
+        doc.restore();
+        y += 24;
+
+        params.forEach(p => {
+          y = pb(doc, y, 20);
+          doc.save();
+          doc.fontSize(8).fillColor('#1c2333').font('Helvetica-Bold').text(p.name, MX, y, { width: 130 });
+          doc.fontSize(7.5).fillColor('#8892a8').font('Helvetica').text(`${p.score}/100`, MX + 135, y + 1, { width: 35 });
+          drawBar(doc, MX + 175, y + 1, 275, 7, p.score, EL_COLORS[el] || '#3d5df0');
+          doc.restore();
+          y += 12;
+
+          if (p.light || p.shadow) {
+            doc.save();
+            doc.fontSize(7).fillColor('#5c6580').font('Helvetica-Oblique');
+            const lightText = p.light ? `+ ${p.light}` : '';
+            const shadowText = p.shadow ? `! ${p.shadow}` : '';
+            doc.text(`${lightText}  ${shadowText}`.trim(), MX + 10, y, { width: CW - 20 });
+            doc.restore();
+            y = doc.y + 3;
+          }
+        });
+        y += 6;
+      });
+    }
+
+    // DEEPER PARAMETERS
+    if (numoParams.length) {
+      y = secTitle(doc, y, 'DEEPER PARAMETERS');
+      doc.save();
+      doc.fontSize(9).fillColor('#5c6580').font('Helvetica').text('Six additional lenses \u2014 stillness, luck, harmony, destiny, karmic balance, and intuition.', MX, y, { width: CW });
+      doc.restore();
+      y = doc.y + 6;
+
+      const avg = numoParams.reduce((s, p) => s + p.score, 0) / numoParams.length;
+      doc.save();
+      doc.roundedRect(MX, y, CW, 22, 4).fill('#f2f5ff');
+      doc.fontSize(9).fillColor('#3d5df0').font('Helvetica-Bold').text(`${Math.round(avg)}/100 avg`, MX + 8, y + 5, { width: CW - 16 });
+      doc.restore();
+      y += 28;
+
+      numoParams.forEach(p => {
+        y = pb(doc, y, 18);
+        doc.save();
+        doc.fontSize(8).fillColor('#1c2333').font('Helvetica-Bold').text(p.name, MX, y, { width: 200 });
+        doc.fontSize(7.5).fillColor('#8892a8').font('Helvetica').text(`${p.score}/5 \u00b7 ${p.outcome || p.resonance || ''}`, MX + 205, y + 1, { width: 150 });
+        drawBar(doc, MX + 360, y + 1, 90, 7, p.score * 20, '#C79A4B');
+        doc.restore();
+        y += 14;
+      });
+      y += 8;
+    }
+
+    // MASKED TRAITS (Interview Prep)
+    if (tri && tri.maskedTraits && tri.maskedTraits.length) {
+      y = secTitle(doc, y, 'INTERVIEW PREP');
+      doc.save();
+      doc.fontSize(9).fillColor('#5c6580').font('Helvetica').text('3 conversation openers from this candidate\'s own signals.', MX, y, { width: CW });
+      doc.restore();
+      y = doc.y + 6;
+
+      tri.maskedTraits.forEach((m) => {
+        y = pb(doc, y, 48);
+        doc.save();
+        doc.roundedRect(MX, y, CW, 44, 6).fill('#fff8ef').strokeColor('#f2e2c4').lineWidth(0.5).stroke();
+        doc.fontSize(10).fillColor('#a4700e').font('Helvetica-Bold').text(m.trait, MX + 12, y + 6, { width: CW - 24 });
+        doc.fontSize(9).fillColor('#3c4457').font('Helvetica').text(m.prompt, MX + 12, y + 22, { width: CW - 24 });
+        doc.restore();
+        y += 52;
+      });
+    }
+
+    // FOOTER
     doc.save();
     doc.fontSize(7).fillColor('#aaaaaa').font('Helvetica-Oblique').text(
       'This is a playful reflection \u2014 not a hiring signal. Real judgment comes from interview, references, and lived work, not numbers.',
-      MARGIN, BOTTOM, { width: CONTENT_W, align: 'center' }
+      MX, BTM, { width: CW, align: 'center' }
     );
     doc.restore();
 
