@@ -45,9 +45,9 @@ const PW = 595.28;
 const PH = 841.89;
 const CW = PW - 2 * MX;
 const BTM = PH - 50;
-
-const CAT_COLORS = { Expression: '#6366f1', Attitude: '#f59e0b', Unmasked: '#06b6d4', Personality: '#8b5cf6', 'Soul Urge': '#ec4899', Masked: '#eab308' };
 const EL_COLORS = { AGNI: '#e3742f', VAYU: '#a5872f', JALA: '#c7607a', AKASHA: '#3d5df0' };
+const EL_NAMES = { AGNI: 'Momentum', VAYU: 'Ideation', JALA: 'Connection', AKASHA: 'Perspective' };
+const CAT_COLORS = { Expression: '#6366f1', Attitude: '#f59e0b', Unmasked: '#06b6d4', Personality: '#8b5cf6', 'Soul Urge': '#ec4899', Masked: '#eab308' };
 
 function bdg(pct) {
   if (pct >= 80) return { label: 'Excellent', color: '#4F8F7D' };
@@ -77,6 +77,42 @@ function secTitle(doc, y, text) {
 function pb(doc, y, need) {
   if (y + need > BTM) { doc.addPage(); return MX; }
   return y;
+}
+
+function drawDoughnut(doc, cx, cy, outerR, innerR, segments) {
+  const total = segments.reduce((s, seg) => s + seg.value, 0);
+  if (total === 0) return;
+  let startAngle = -Math.PI / 2;
+  segments.forEach(seg => {
+    const sliceAngle = (seg.value / total) * 2 * Math.PI;
+    const endAngle = startAngle + sliceAngle;
+    const path = [];
+    path.push(`M ${cx + outerR * Math.cos(startAngle)} ${cy + outerR * Math.sin(startAngle)}`);
+    path.push(`A ${outerR} 0 ${sliceAngle > Math.PI ? 1 : 0} 1 ${cx + outerR * Math.cos(endAngle)} ${cy + outerR * Math.sin(endAngle)}`);
+    path.push(`L ${cx + innerR * Math.cos(endAngle)} ${cy + innerR * Math.sin(endAngle)}`);
+    path.push(`A ${innerR} 0 ${sliceAngle > Math.PI ? 1 : 0} 0 ${cx + innerR * Math.cos(startAngle)} ${cy + innerR * Math.sin(startAngle)}`);
+    path.push('Z');
+    doc.save();
+    doc.path(path.join(' ')).fill(seg.color);
+    doc.restore();
+    startAngle = endAngle;
+  });
+}
+
+function drawStackedBar(doc, x, y, w, h, strengths, edges) {
+  const total = strengths + edges;
+  if (total === 0) {
+    doc.save();
+    doc.roundedRect(x, y, w, h, h / 2).fill('#eef0f7');
+    doc.restore();
+    return;
+  }
+  const strW = (strengths / total) * w;
+  const edgW = (edges / total) * w;
+  doc.save();
+  if (strW > 0) doc.roundedRect(x, y, strW, h, h / 2).fill('#2f7a52');
+  if (edgW > 0) doc.roundedRect(x + strW, y, edgW, h, h / 2).fill('#e3742f');
+  doc.restore();
 }
 
 router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
@@ -119,7 +155,7 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
 
     let y = 100;
 
-    // SCORE BADGE (always on top)
+    // SCORE BADGE
     if (pct != null && pct > 0 && bdgVal) {
       doc.save();
       doc.roundedRect(MX, y, CW, 52, 8).fill(bdgVal.color);
@@ -168,7 +204,81 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
       y += Math.ceil(cats.length / 2) * (catH + catGap) + 10;
     }
 
-    // BEHAVIORAL DRIVERS (bar graphs, no element names)
+    // DOUGHNUT CHART — element share
+    if (tri && tri.elements) {
+      y = secTitle(doc, y, 'ELEMENT SHARE');
+      const elEntries = Object.entries(tri.elements).filter(([,v]) => v > 0);
+      const doughnutCx = MX + 80;
+      const doughnutCy = y + 70;
+      const segments = elEntries.map(([el, val]) => ({
+        label: EL_NAMES[el] || el,
+        value: val,
+        color: EL_COLORS[el] || '#999',
+      }));
+      drawDoughnut(doc, doughnutCx, doughnutCy, 60, 35, segments);
+
+      // center text
+      doc.save();
+      doc.fontSize(10).fillColor('#1c2333').font('Helvetica-Bold').text('DOMINANT', doughnutCx - 30, doughnutCy - 8, { width: 60, align: 'center' });
+      const dom = elEntries.sort((a, b) => b[1] - a[1])[0];
+      doc.fontSize(9).fillColor('#3d5df0').font('Helvetica-Bold').text(EL_NAMES[dom[0]] || dom[0], doughnutCx - 30, doughnutCy + 4, { width: 60, align: 'center' });
+      doc.restore();
+
+      // legend
+      const legX = MX + 180;
+      elEntries.sort((a, b) => b[1] - a[1]).forEach(([el, val], i) => {
+        const ly = y + 20 + i * 26;
+        doc.save();
+        doc.roundedRect(legX, ly, 10, 10, 2).fill(EL_COLORS[el] || '#999');
+        doc.fontSize(9).fillColor('#1c2333').font('Helvetica-Bold').text(EL_NAMES[el] || el, legX + 16, ly - 1, { width: 100 });
+        doc.fontSize(9).fillColor('#5c6580').font('Helvetica').text(`${val}/100`, legX + 120, ly - 1, { width: 40 });
+        doc.restore();
+      });
+      y += 160;
+    }
+
+    // STACKED BAR — strengths vs edges per element
+    if (tri && tri.parameters) {
+      y = secTitle(doc, y, 'STRENGTHS VS EDGES');
+      const barX = MX + 140;
+      const barW = CW - 140;
+      const barH = 16;
+
+      const EL_ORDER = ['AGNI', 'VAYU', 'JALA', 'AKASHA'];
+      const elGroups = {};
+      Object.entries(tri.parameters).forEach(([pname, p]) => {
+        const el = p.element || 'AKASHA';
+        if (!elGroups[el]) elGroups[el] = [];
+        elGroups[el].push(p);
+      });
+
+      EL_ORDER.forEach(el => {
+        const params = elGroups[el] || [];
+        const strengths = params.filter(p => p.score >= 70).length;
+        const edges = params.filter(p => p.score < 40).length;
+        const neutral = params.length - strengths - edges;
+
+        y = pb(doc, y, 28);
+        doc.save();
+        doc.fontSize(9).fillColor('#1c2333').font('Helvetica-Bold').text(EL_NAMES[el] || el, MX, y + 2, { width: 130 });
+        drawStackedBar(doc, barX, y + 2, barW, barH, strengths, edges);
+        doc.fontSize(8).fillColor('#5c6580').font('Helvetica').text(`${strengths} strong  ${edges} edge${edges !== 1 ? 's' : ''}`, barX + barW + 8, y + 4, { width: 80 });
+        doc.restore();
+        y += 28;
+      });
+
+      // legend
+      y += 4;
+      doc.save();
+      doc.roundedRect(MX, y, 10, 10, 2).fill('#2f7a52');
+      doc.fontSize(8).fillColor('#1c2333').font('Helvetica').text('Strengths (70+)', MX + 14, y - 1, { width: 80 });
+      doc.roundedRect(MX + 110, y, 10, 10, 2).fill('#e3742f');
+      doc.fontSize(8).fillColor('#1c2333').font('Helvetica').text('Edges (<40)', MX + 124, y - 1, { width: 70 });
+      doc.restore();
+      y += 20;
+    }
+
+    // BEHAVIORAL DRIVERS (bar graphs)
     if (tri && tri.parameters) {
       y = secTitle(doc, y, 'BEHAVIORAL DRIVERS');
       const sorted = Object.entries(tri.parameters).sort((a, b) => b[1].score - a[1].score);
@@ -202,7 +312,6 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
       doc.fontSize(9).fillColor('#3d5df0').font('Helvetica-Bold').text(`${Math.round(avg)}/100 avg`, MX + 8, y + 5, { width: CW - 16 });
       doc.restore();
       y += 28;
-
       numoParams.forEach(p => {
         y = pb(doc, y, 18);
         doc.save();
@@ -229,10 +338,9 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
       });
     }
 
-    // OVERALL CONCLUSION (always last)
+    // OVERALL CONCLUSION (last)
     if (conclusion) {
       y = secTitle(doc, y, 'OVERALL CONCLUSION');
-
       if (conclusion.greenFlags && conclusion.greenFlags.length) {
         doc.save();
         doc.fontSize(10).fillColor('#2f7a52').font('Helvetica-Bold').text('Green Flags', MX, y, { width: CW });
@@ -245,7 +353,6 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
         doc.restore();
         y += 6;
       }
-
       if (conclusion.redFlags && conclusion.redFlags.length) {
         doc.save();
         doc.fontSize(10).fillColor('#a4700e').font('Helvetica-Bold').text('Worth Exploring', MX, y, { width: CW });
@@ -258,7 +365,6 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
         doc.restore();
         y += 6;
       }
-
       if (conclusion.bestParts && conclusion.bestParts.length) {
         doc.save();
         doc.fontSize(10).fillColor('#C79A4B').font('Helvetica-Bold').text('Best Parts', MX, y, { width: CW });
@@ -271,7 +377,6 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
         doc.restore();
         y += 6;
       }
-
       if (conclusion.finalVerdict) {
         y = pb(doc, y, 70);
         doc.save();
