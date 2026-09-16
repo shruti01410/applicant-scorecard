@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
-  Typography, Table, Button, Input, Space, Tag, Modal, Form, message, Card, Select, Upload, Popconfirm, Segmented, Dropdown, DatePicker,
+  Typography, Button, Tag, Modal, Form, message, Select, Upload, Segmented, Dropdown, DatePicker,
 } from 'antd';
 import { Link } from 'react-router-dom';
-import { UploadOutlined, PlusOutlined, FileTextOutlined, StarOutlined, StarFilled, DeleteOutlined, InboxOutlined, UndoOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
+import { UploadOutlined, FileTextOutlined, StarFilled } from '@ant-design/icons';
 import { api } from '../../services/api';
 import { badge } from '../../scoreLabels';
 import { validateResumeFileClient } from '../../services/resumeCheck';
@@ -48,6 +48,8 @@ export default function ScoresPage() {
   const [integrityEmpId, setIntegrityEmpId] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [compareOpen, setCompareOpen] = useState(false);
+  const [sortKey, setSortKey] = useState(null);
+  const [sortDir, setSortDir] = useState('asc');
 
   async function fetchRows() {
     setLoading(true);
@@ -101,32 +103,6 @@ export default function ScoresPage() {
     }
   }
 
-  const columns = [
-    { title: '', width: 40, render: (_, row) => <Button type="text" size="small" icon={row.is_favorite ? <StarFilled style={{ color: '#f59e0b' }} /> : <StarOutlined />} onClick={() => toggleFav(row.id)} /> },
-    { title: '#', render: (_, __, i) => i + 1, width: 40 },
-    {
-      title: 'Employee',
-      dataIndex: 'applicant_name',
-      render: (v, row) => <><Link to={`/scores/${row.id}`}>{v}</Link>{row.is_archived && <Tag color="default" style={{ marginLeft: 6 }}>Archived</Tag>}</>,
-    },
-    { title: 'Client', dataIndex: 'client', render: v => v || '—' },
-    { title: 'Position', dataIndex: 'position', render: v => v || '—' },
-    { title: 'Weighted Score', dataIndex: 'weighted_pct', render: v => badgeFor(v) },
-    { title: 'JD Match', dataIndex: 'capability_match_pct', render: v => v == null ? <Tag>—</Tag> : <Tag color={v >= 70 ? 'green' : v >= 40 ? 'orange' : 'red'}>{v}%</Tag> },
-    {
-      title: 'Action',
-      width: 260,
-      render: (_, row) => (
-        <Space>
-          <Link to={`/scores/${row.id}`}><Button size="small" type="primary">{row.scorecard_id ? 'Edit Score' : 'Score Now'}</Button></Link>
-          <Button size="small" icon={<SafetyCertificateOutlined />} onClick={() => handleIntegrityCheck(row.id)}>Integrity</Button>
-          <Button size="small" icon={row.is_archived ? <UndoOutlined /> : <InboxOutlined />} onClick={() => toggleArchive(row.id)}>{row.is_archived ? 'Unarchive' : 'Archive'}</Button>
-          <Popconfirm title="Delete candidate?" description="This removes scorecard and numerology data. Cannot be undone." okText="Delete" okButtonProps={{ danger: true }} onConfirm={() => handleDelete(row.id)}><Button size="small" danger icon={<DeleteOutlined />} /></Popconfirm>
-        </Space>
-      ),
-    },
-  ];
-
   async function onAddCandidates(values) {
     try {
       const hasResume = values.resume && values.resume.fileList && values.resume.fileList[0];
@@ -174,8 +150,26 @@ export default function ScoresPage() {
   }
 
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
-  const paged = rows.slice((page-1)*pageSize, page*pageSize);
-  useEffect(()=>{ setPage(1); },[search]);
+
+  function toggleSort(key) {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir('asc'); }
+  }
+  function sortIcon(key) {
+    if (sortKey !== key) return <span style={{ opacity:0.3, marginLeft:4 }}>⇅</span>;
+    return <span style={{ marginLeft:4 }}>{sortDir === 'asc' ? '↑' : '↓'}</span>;
+  }
+
+  const sorted = [...rows].sort((a, b) => {
+    if (!sortKey) return 0;
+    let av = a[sortKey], bv = b[sortKey];
+    if (av == null) av = sortDir === 'asc' ? Infinity : -Infinity;
+    if (bv == null) bv = sortDir === 'asc' ? Infinity : -Infinity;
+    if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+    return sortDir === 'asc' ? av - bv : bv - av;
+  });
+  const paged = sorted.slice((page-1)*pageSize, page*pageSize);
+  useEffect(()=>{ setPage(1); },[search, filter]);
 
   return (
     <div>
@@ -216,10 +210,10 @@ export default function ScoresPage() {
                 }} />
               </th>
               <th style={{ width:36 }}>#</th>
-              <th>EMPLOYEE</th>
-              <th>CLIENT</th>
-              <th>POSITION</th>
-              <th>WEIGHTED SCORE</th>
+              <th style={{ cursor:'pointer', userSelect:'none' }} onClick={()=>toggleSort('applicant_name')}>EMPLOYEE{sortIcon('applicant_name')}</th>
+              <th style={{ cursor:'pointer', userSelect:'none' }} onClick={()=>toggleSort('client')}>CLIENT{sortIcon('client')}</th>
+              <th style={{ cursor:'pointer', userSelect:'none' }} onClick={()=>toggleSort('position')}>POSITION{sortIcon('position')}</th>
+              <th style={{ cursor:'pointer', userSelect:'none' }} onClick={()=>toggleSort('weighted_pct')}>WEIGHTED SCORE{sortIcon('weighted_pct')}</th>
               <th style={{ width:110 }}>ACTION</th>
             </tr>
           </thead>
