@@ -225,15 +225,20 @@ function computeNumoParameters(profile, company) {
       diffForOutcome = diffHarmony;
       reasons.push(companyNum != null ? `Composite ${composite} vs Company ${companyNum} (Δ${diffHarmony}) — same as Trajectory Alignment` : 'No company number yet');
     } else if (p.key === 'destiny') {
-      // Destiny = internal alignment: expression number vs life path number
-      // Measures whether name energy matches life path direction
+      // Destiny = momentum strength: how clear and directed is the expression energy?
+      // Master numbers (11/22/33) = strongest momentum, single digits = solid, large raw = diluted
+      const rawExpr = expr;
+      const isMasterExpr = rawExpr === 11 || rawExpr === 22 || rawExpr === 33;
       const diffExprLP = Math.abs(normExpr - normLife);
-      if (diffExprLP === 0) score = 5;
-      else if (diffExprLP === 1) score = 4;
-      else if (diffExprLP >= 4) score = 2;
-      else score = 3;
-      diffForOutcome = diffExprLP;
-      reasons.push(`Expression ${expr} (→${normExpr}) vs Life Path ${lifePath} (→${normLife}) (Δ${diffExprLP})`);
+      const alignedWithLP = diffExprLP <= 1;
+      if (isMasterExpr && alignedWithLP) score = 5;
+      else if (isMasterExpr) score = 4;
+      else if (alignedWithLP) score = 4;
+      else if (diffExprLP <= 2) score = 3;
+      else if (diffExprLP <= 3) score = 3;
+      else score = 2;
+      diffForOutcome = isMasterExpr ? 0 : alignedWithLP ? 1 : diffExprLP;
+      reasons.push(`Expression ${expr} (→${normExpr}) vs Life Path ${lifePath} (→${normLife}) (Δ${diffExprLP})${isMasterExpr ? ' — master number momentum' : ''}`);
     } else if (p.key === 'karmic') {
       if (birth === 6 || birth === 11 || birth === 22) score = 5;
       else if (normBirth === 6) score = 4;
