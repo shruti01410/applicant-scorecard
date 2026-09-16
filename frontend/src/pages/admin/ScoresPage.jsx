@@ -9,6 +9,7 @@ import { badge } from '../../scoreLabels';
 import { validateResumeFileClient } from '../../services/resumeCheck';
 import ResumeIntegrity from '../../components/ResumeIntegrity';
 import CompareCandidates from '../../components/CompareCandidates';
+import FilterPanel from '../../components/FilterPanel';
 
 const { Title } = Typography;
 
@@ -50,6 +51,8 @@ export default function ScoresPage() {
   const [compareOpen, setCompareOpen] = useState(false);
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
+  const [advancedFilters, setAdvancedFilters] = useState(null);
+  const [jdsList, setJdsList] = useState([]);
 
   async function fetchRows() {
     setLoading(true);
@@ -71,6 +74,7 @@ export default function ScoresPage() {
   useEffect(() => { fetchRows(); }, [search, filter]);
   useEffect(() => {
     if (addOpen) api.get('/api/admin/job-descriptions').then(setJds).catch(() => {});
+    api.get('/api/admin/job-descriptions').then(setJdsList).catch(() => {});
   }, [addOpen]);
 
   function badgeFor(v) {
@@ -198,6 +202,8 @@ export default function ScoresPage() {
         <input className="search-input" placeholder="Search by employee, client or position..." value={search} onChange={e=>setSearch(e.target.value)} />
         {search && <button className="search-clear" onClick={()=>setSearch('')}>✕</button>}
       </div>
+
+      <FilterPanel jds={jdsList} onFilter={(f) => { setAdvancedFilters(f); }} onClear={() => { setAdvancedFilters(null); }} />
 
       <div className="card" style={{ overflow:'hidden' }}>
         <table className="table">

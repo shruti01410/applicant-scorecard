@@ -10,6 +10,8 @@ import { api } from '../../services/api';
 import { badge, colorFor } from '../../scoreLabels';
 import { validateResumeFileClient } from '../../services/resumeCheck';
 import NumerologyTab from './numerology/NumerologyTab';
+import MustHaveGate from '../../components/MustHaveGate';
+import EvidenceDisplay from '../../components/EvidenceDisplay';
 
 const { Title, Text } = Typography;
 
@@ -29,6 +31,9 @@ export default function ScorePage() {
   const [selectedJd, setSelectedJd] = useState(null);
   const [jdText, setJdText] = useState(null);
   const [resumeText, setResumeText] = useState(null);
+  const [evidenceData, setEvidenceData] = useState([]);
+  const [mustHaveData, setMustHaveData] = useState(null);
+  const [showEvidence, setShowEvidence] = useState(false);
 
   const totalWeight = parameters.reduce((a, p) => a + p.weightage, 0);
   const weightedPct = Math.round(
@@ -59,6 +64,16 @@ export default function ScorePage() {
   async function fetchCapability() {
     try { const c = await api.get(`/api/admin/employees/${id}/capability-match`); setCapability(c); } catch (e) { setCapability(null); }
   }
+  async function fetchEvidenceAndMustHave() {
+    try {
+      const [ev, mh] = await Promise.all([
+        api.get(`/api/admin/employees/${id}/evidence`),
+        api.get(`/api/admin/employees/${id}/must-have`),
+      ]);
+      setEvidenceData(ev.evidence || []);
+      setMustHaveData(mh);
+    } catch (e) { setEvidenceData([]); setMustHaveData(null); }
+  }
   useEffect(() => {
     (async () => {
       try {
@@ -86,6 +101,7 @@ export default function ScorePage() {
         }
         api.get('/api/admin/job-descriptions').then(setJds).catch(()=>{});
         fetchCapability();
+        fetchEvidenceAndMustHave();
       } catch (e) {
         message.error(e.message);
       } finally {
@@ -124,6 +140,7 @@ export default function ScorePage() {
       setLiveScores(scores);
       form.setFieldsValue(scoreFields);
       fetchCapability();
+      fetchEvidenceAndMustHave();
     } catch (e) { message.error(e.message); } finally { setCapLoading(false); }
   }
 
@@ -276,6 +293,31 @@ export default function ScorePage() {
             </div>
           )}
         </Card>
+
+        {mustHaveData && mustHaveData.results && mustHaveData.results.length > 0 && (
+          <MustHaveGate mustHaveData={mustHaveData} />
+        )}
+
+        {evidenceData.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <div
+              onClick={() => setShowEvidence(!showEvidence)}
+              style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, marginBottom: showEvidence ? 8 : 0 }}
+            >
+              <span style={{ fontWeight: 600, fontSize: 13, color: '#1e293b' }}>Evidence & Confidence</span>
+              <span style={{ fontSize: 11, color: '#64748b' }}>{evidenceData.length} parameters scored</span>
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: '#6366f1' }}>{showEvidence ? '▾ Hide' : '▸ Show'}</span>
+            </div>
+            {showEvidence && (
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderTop: 'none', borderRadius: '0 0 8px 8px', padding: 12 }}>
+                {evidenceData.map((ev) => {
+                  const param = parameters.find(p => p.id === ev.parameter_id);
+                  return <EvidenceDisplay key={ev.id} evidenceData={ev} paramName={param ? param.name : `Parameter ${ev.parameter_id}`} />;
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="card" style={{ padding:0, overflow:'hidden' }}>
           <div className="card-title" style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
