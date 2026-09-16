@@ -348,26 +348,24 @@ export default function ScoresPage() {
           <Form.Item name="date_of_birth" label="Date of Birth *" rules={[{ required: true, message: 'Date of Birth is required.' }]}><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="DD/MM/YYYY" disabledDate={(d) => d && d.isAfter(new Date())} /></Form.Item>
           <Form.Item name="position" label="Role / Position"><Input placeholder="Senior Accounts Payable" /></Form.Item>
           <Form.Item name="client" label="Client"><Input placeholder="iSHR" /></Form.Item>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-            <Form.Item name="company_id" label="Company (for Deep Parameters)" style={{ flex: 1, marginBottom: 0 }}>
-              <Select
-                placeholder="Select company"
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                options={companies.map(c => ({ value: c.id, label: c.client_name }))}
-                dropdownRender={(menu) => (
-                  <>
-                    {menu}
-                    <div style={{ padding: '4px 8px', borderTop: '1px solid #f0f0f0' }}>
-                      <Button type="link" icon={<PlusOutlined />} size="small" onClick={() => setAddCompanyOpen(true)}>Add New Company</Button>
-                    </div>
-                  </>
-                )}
-              />
-            </Form.Item>
-          </div>
-          <div style={{ fontSize: 11, color: '#9aa0a6', marginTop: -8, marginBottom: 12 }}>
+          <Form.Item name="company_id" label="Company (for Deep Parameters)">
+            <Select
+              placeholder="Select company"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              options={companies.map(c => ({ value: c.id, label: c.client_name }))}
+              dropdownRender={(menu) => (
+                <>
+                  {menu}
+                  <div style={{ padding: '4px 8px', borderTop: '1px solid #f0f0f0' }}>
+                    <Button type="link" icon={<PlusOutlined />} size="small" onClick={() => setAddCompanyOpen(true)}>Add New Company</Button>
+                  </div>
+                </>
+              )}
+            />
+          </Form.Item>
+          <div style={{ fontSize: 11, color: '#9aa0a6', marginTop: -16, marginBottom: 16 }}>
             Company numerology is used for the six Deep Parameters — separate from evidence-based recruitment scores.
           </div>
           <div className="candidate-upload-grid">
