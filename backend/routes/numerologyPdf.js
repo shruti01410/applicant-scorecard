@@ -47,7 +47,7 @@ const CW = PW - 2 * MX;
 const BTM = PH - 50;
 const EL_COLORS = { AGNI: '#e3742f', VAYU: '#a5872f', JALA: '#c7607a', AKASHA: '#3d5df0' };
 const EL_NAMES = { AGNI: 'Momentum', VAYU: 'Ideation', JALA: 'Connection', AKASHA: 'Perspective' };
-const CAT_COLORS = { Expression: '#6366f1', Attitude: '#f59e0b', Unmasked: '#06b6d4', Personality: '#8b5cf6', 'Soul Urge': '#ec4899', Masked: '#eab308' };
+const CAT_COLORS = { Expression: '#6366f1', Attitude: '#f59e0b', Unmasked: '#06b6d4', Personality: '#8b5cf6', 'Soul Urge': '#ec4899' };
 
 function bdg(pct) {
   if (pct >= 80) return { label: 'Excellent', color: '#4F8F7D' };
@@ -99,30 +99,14 @@ function drawDoughnut(doc, cx, cy, outerR, innerR, segments) {
   });
 }
 
-function drawStackedBar(doc, x, y, w, h, strengths, edges) {
-  const total = strengths + edges;
-  if (total === 0) {
-    doc.save();
-    doc.roundedRect(x, y, w, h, h / 2).fill('#eef0f7');
-    doc.restore();
-    return;
-  }
-  const strW = (strengths / total) * w;
-  const edgW = (edges / total) * w;
-  doc.save();
-  if (strW > 0) doc.roundedRect(x, y, strW, h, h / 2).fill('#2f7a52');
-  if (edgW > 0) doc.roundedRect(x + strW, y, edgW, h, h / 2).fill('#e3742f');
-  doc.restore();
-}
-
 router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
   try {
-    const emp = db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(req.params.id);
+    const emp = db.prepare('SELECT id, name, date_of_birth, email FROM users WHERE id = ?').get(req.params.id);
     if (!emp) return res.status(404).json({ error: 'Employee not found' });
 
     const profile = getProfile(emp.id);
     const name = profile ? (profile.numerology_name || profile.full_name || emp.name) : emp.name;
-    const dob = profile ? profile.date_of_birth : null;
+    const dob = profile ? profile.date_of_birth : emp.date_of_birth;
     const triNature = computeTriNature(name, dob);
     const tri = triNature.hasProfile ? triNature : null;
 
@@ -145,18 +129,18 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
 
     const doc = new PDFDocument({ size: 'A4', margin: MX, bufferPages: true });
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${name.replace(/[^a-zA-Z0-9]/g, '_')}_report.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${(name || 'report').replace(/[^a-zA-Z0-9]/g, '_')}_report.pdf"`);
     doc.pipe(res);
 
     // HEADER
     doc.rect(0, 0, PW, 80).fill('#1B1D25');
     doc.fontSize(20).fillColor('#ffffff').font('Helvetica-Bold').text('Inner Intelligence Report', MX, 20, { width: CW });
-    doc.fontSize(11).fillColor('#C79A4B').font('Helvetica').text(`${name}  |  ${dob || 'No DOB'}  |  ${today}`, MX, 48, { width: CW });
+    doc.fontSize(11).fillColor('#C79A4B').font('Helvetica').text(`${name || 'Unknown'}  |  ${dob || 'No DOB'}  |  ${today}`, MX, 48, { width: CW });
 
     let y = 100;
 
-    // SCORE BADGE
-    if (pct != null && pct > 0 && bdgVal) {
+    // SCORE BADGE — always show if scores exist
+    if (pct != null && bdgVal) {
       doc.save();
       doc.roundedRect(MX, y, CW, 52, 8).fill(bdgVal.color);
       doc.fontSize(28).fillColor('#ffffff').font('Helvetica-Bold').text(`${pct}%`, MX, y + 8, { width: CW, align: 'center' });
@@ -169,18 +153,19 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
     if (tri && tri.signature) {
       y = secTitle(doc, y, 'CORE SIGNATURE');
       const sig = tri.signature;
+      const sigText = sig.desc || '';
       doc.save();
-      doc.roundedRect(MX, y, CW, 45, 8).fill('#f2f5ff');
+      doc.roundedRect(MX, y, CW, 80, 8).fill('#f2f5ff');
       doc.fontSize(14).fillColor('#3d5df0').font('Helvetica-Bold').text(sig.name, MX + 12, y + 10, { width: CW - 24 });
-      doc.fontSize(9).fillColor('#5c6580').font('Helvetica').text(sig.desc || '', MX + 12, y + 28, { width: CW - 24 });
+      doc.fontSize(9).fillColor('#5c6580').font('Helvetica').text(sigText, MX + 12, doc.y + 2, { width: CW - 24 });
       doc.restore();
-      y += 55;
+      y = doc.y + 10;
     }
 
-    // 6 CATEGORIES
+    // 6 CATEGORIES (skip Masked — interview-only, no score)
     if (tri && tri.categories) {
       y = secTitle(doc, y, '6 CATEGORIES');
-      const cats = Object.entries(tri.categories);
+      const cats = Object.entries(tri.categories).filter(([, cat]) => cat.score != null);
       const halfW = (CW - 10) / 2;
       const catH = 50;
       const catGap = 8;
@@ -192,12 +177,8 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
         doc.save();
         doc.roundedRect(cx, cy, halfW, catH, 6).fill('#f9fafc').strokeColor('#eceef5').lineWidth(0.5).stroke();
         doc.fontSize(10).fillColor('#1c2333').font('Helvetica-Bold').text(cat.name, cx + 10, cy + 6, { width: halfW - 80 });
-        if (cat.score != null) {
-          doc.fontSize(11).fillColor(cat.score >= 70 ? '#2f7a52' : cat.score >= 40 ? '#a4700e' : '#8892a8').font('Helvetica-Bold').text(`${cat.score}`, cx + halfW - 50, cy + 5, { width: 40, align: 'right' });
-          drawBar(doc, cx + 10, cy + 26, halfW - 20, 8, cat.score, CAT_COLORS[key] || '#3d5df0');
-        } else {
-          doc.fontSize(8).fillColor('#8892a8').font('Helvetica-Oblique').text('Interview-only', cx + halfW - 75, cy + 6, { width: 65, align: 'right' });
-        }
+        doc.fontSize(11).fillColor(cat.score >= 70 ? '#2f7a52' : cat.score >= 40 ? '#a4700e' : '#8892a8').font('Helvetica-Bold').text(`${cat.score}`, cx + halfW - 50, cy + 5, { width: 40, align: 'right' });
+        drawBar(doc, cx + 10, cy + 26, halfW - 20, 8, cat.score, CAT_COLORS[key] || '#3d5df0');
         doc.fontSize(7.5).fillColor('#8892a8').font('Helvetica').text(cat.desc || '', cx + 10, cy + 38, { width: halfW - 20 });
         doc.restore();
       });
@@ -207,7 +188,7 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
     // DOUGHNUT CHART — element share
     if (tri && tri.elements) {
       y = secTitle(doc, y, 'ELEMENT SHARE');
-      const elEntries = Object.entries(tri.elements).filter(([,v]) => v > 0);
+      const elEntries = Object.entries(tri.elements).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
       const doughnutCx = MX + 80;
       const doughnutCy = y + 70;
       const segments = elEntries.map(([el, val]) => ({
@@ -217,16 +198,13 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
       }));
       drawDoughnut(doc, doughnutCx, doughnutCy, 60, 35, segments);
 
-      // center text
       doc.save();
       doc.fontSize(10).fillColor('#1c2333').font('Helvetica-Bold').text('DOMINANT', doughnutCx - 30, doughnutCy - 8, { width: 60, align: 'center' });
-      const dom = elEntries.sort((a, b) => b[1] - a[1])[0];
-      doc.fontSize(9).fillColor('#3d5df0').font('Helvetica-Bold').text(EL_NAMES[dom[0]] || dom[0], doughnutCx - 30, doughnutCy + 4, { width: 60, align: 'center' });
+      doc.fontSize(9).fillColor('#3d5df0').font('Helvetica-Bold').text(EL_NAMES[elEntries[0][0]] || elEntries[0][0], doughnutCx - 30, doughnutCy + 4, { width: 60, align: 'center' });
       doc.restore();
 
-      // legend
       const legX = MX + 180;
-      elEntries.sort((a, b) => b[1] - a[1]).forEach(([el, val], i) => {
+      elEntries.forEach(([el, val], i) => {
         const ly = y + 20 + i * 26;
         doc.save();
         doc.roundedRect(legX, ly, 10, 10, 2).fill(EL_COLORS[el] || '#999');
@@ -237,7 +215,7 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
       y += 160;
     }
 
-    // STACKED BAR — strengths vs edges per element
+    // STACKED BAR — high/mid/low per element
     if (tri && tri.parameters) {
       y = secTitle(doc, y, 'STRENGTHS VS EDGES');
       const barX = MX + 140;
@@ -264,27 +242,14 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
         doc.save();
         doc.fontSize(9).fillColor('#1c2333').font('Helvetica-Bold').text(EL_NAMES[el] || el, MX, y + 2, { width: 130 });
         let bx = barX;
-        if (high > 0) {
-          const w = (high / total) * barW;
-          doc.roundedRect(bx, y + 2, w, barH, 3).fill('#2f7a52');
-          bx += w;
-        }
-        if (mid > 0) {
-          const w = (mid / total) * barW;
-          doc.rect(bx, y + 2, w, barH).fill('#c8cce0');
-          bx += w;
-        }
-        if (low > 0) {
-          const w = (low / total) * barW;
-          doc.roundedRect(bx, y + 2, w, barH, 3).fill('#e3742f');
-          bx += w;
-        }
+        if (high > 0) { const w = (high / total) * barW; doc.roundedRect(bx, y + 2, w, barH, 3).fill('#2f7a52'); bx += w; }
+        if (mid > 0) { const w = (mid / total) * barW; doc.rect(bx, y + 2, w, barH).fill('#c8cce0'); bx += w; }
+        if (low > 0) { const w = (low / total) * barW; doc.roundedRect(bx, y + 2, w, barH, 3).fill('#e3742f'); bx += w; }
         doc.fontSize(8).fillColor('#5c6580').font('Helvetica').text(`${high} high  ${mid} mid  ${low} low`, barX + barW + 8, y + 4, { width: 80 });
         doc.restore();
         y += 28;
       });
 
-      // legend
       y += 4;
       doc.save();
       doc.roundedRect(MX, y, 10, 10, 2).fill('#2f7a52');
@@ -328,7 +293,7 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
       const avg = numoParams.reduce((s, p) => s + p.score, 0) / numoParams.length;
       doc.save();
       doc.roundedRect(MX, y, CW, 22, 4).fill('#f2f5ff');
-      doc.fontSize(9).fillColor('#3d5df0').font('Helvetica-Bold').text(`${Math.round(avg)}/100 avg`, MX + 8, y + 5, { width: CW - 16 });
+      doc.fontSize(9).fillColor('#3d5df0').font('Helvetica-Bold').text(`${avg.toFixed(1)}/5 avg`, MX + 8, y + 5, { width: CW - 16 });
       doc.restore();
       y += 28;
       numoParams.forEach(p => {
