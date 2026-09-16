@@ -1,5 +1,9 @@
 const { extractKeywords } = require('./capabilityMatch');
 const numer = require('./numerologyUtils');
+const { analyzeJD } = require('./jdAnalyzer');
+const { extractEvidence } = require('./evidenceExtractor');
+const { mapEvidenceToParameters, applyJDWeights, computeWeightedPct, applyNumerologyBonus, computeConfidence } = require('./scoreEngine');
+const { checkMustHaves, storeMustHaveResults } = require('./mustHaveGate');
 
 const PARAM_KEYWORDS = {
   1: ['communication','english','articulation','clarity','presentation','interpersonal','spoken','written'],
@@ -93,4 +97,29 @@ function autoRateParameters({ jdText, resumeText, candidateName, jobTitle, lifeP
   return scores;
 }
 
-module.exports = { autoRateParameters, PARAM_KEYWORDS };
+function autoRateEnhanced({ jdText, resumeText, candidateName, jobTitle, lifePath, jdId, db }) {
+  const jdAnalysis = analyzeJD(jdText);
+  const evidenceResults = extractEvidence(resumeText, jdAnalysis.requirements);
+  const mustHaveCheck = checkMustHaves(jdAnalysis, evidenceResults);
+  let paramScores = mapEvidenceToParameters(evidenceResults, jdAnalysis);
+  paramScores = applyJDWeights(paramScores, jdId, db);
+  paramScores = applyNumerologyBonus(paramScores, candidateName, lifePath);
+
+  const pct = computeWeightedPct(paramScores, jdId, db);
+  const overallConfidence = computeConfidence(paramScores.flatMap(p => p.evidence || []));
+
+  return {
+    paramScores,
+    weightedPct: pct,
+    overallConfidence,
+    mustHaveCheck,
+    jdAnalysis: {
+      totalRequirements: jdAnalysis.totalRequirements,
+      requiredCount: jdAnalysis.requiredCount,
+      preferredCount: jdAnalysis.preferredCount,
+    },
+    evidenceResults,
+  };
+}
+
+module.exports = { autoRateParameters, autoRateEnhanced, PARAM_KEYWORDS };

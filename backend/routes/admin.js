@@ -10,7 +10,7 @@ const { weightedPct, loadScorecard } = require('../scoreUtils');
 const { extractText } = require('../fileTextExtract');
 const { extractKeywords, matchResumeToJD } = require('../capabilityMatch');
 const jdValidation = require('../jdValidation');
-const { autoRateParameters } = require('../autoRate');
+const { autoRateParameters, autoRateEnhanced } = require('../autoRate');
 const { detectResumeFlags } = require('../resumeFlags');
 const numer = require('../numerologyUtils');
 const resumeValidation = require('../resumeValidation');
@@ -675,12 +675,17 @@ router.post('/employees/:id/auto-rate', uploadDoc.single('resume'), async (req, 
     db.prepare('UPDATE users SET capability_match_pct = ?, capability_match_detail = ? WHERE id = ?').run(pct, JSON.stringify({ matched, missing, categories }), emp.id);
     const profile = db.prepare('SELECT life_path_number FROM numerology_profiles WHERE employee_id = ? AND dimension = ?').get(emp.id, 'candidate');
     const lifePath = profile ? profile.life_path_number : numer.nameNumber(emp.name);
-    const scores = autoRateParameters({ jdText: jd.description_text, resumeText, candidateName: emp.name, jobTitle: position || jd.title, lifePath });
+    const enhanced = autoRateEnhanced({ jdText: jd.description_text, resumeText, candidateName: emp.name, jobTitle: position || jd.title, lifePath, jdId: jobDescId, db });
+    const scores = enhanced.paramScores;
+    const { storeRequirements } = require('../jdAnalyzer');
+    const { storeMustHaveResults } = require('../mustHaveGate');
     db.exec('BEGIN');
     const existingSc = db.prepare('SELECT id FROM scorecards WHERE employee_id = ?').get(emp.id);
     let scorecardId;
     if (existingSc) {
       db.prepare('DELETE FROM scores WHERE scorecard_id = ?').run(existingSc.id);
+      db.prepare('DELETE FROM parameter_evidence WHERE scorecard_id = ?').run(existingSc.id);
+      db.prepare('DELETE FROM must_have_results WHERE scorecard_id = ?').run(existingSc.id);
       scorecardId = existingSc.id;
       if (position) db.prepare('UPDATE scorecards SET position = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(position, scorecardId);
     } else {
@@ -689,10 +694,16 @@ router.post('/employees/:id/auto-rate', uploadDoc.single('resume'), async (req, 
     }
     const insertScore = db.prepare('INSERT INTO scores (scorecard_id, parameter_id, score) VALUES (?, ?, ?)');
     scores.forEach(s => insertScore.run(scorecardId, s.parameter_id, s.score));
+    const insertEvidence = db.prepare('INSERT INTO parameter_evidence (scorecard_id, parameter_id, score, confidence, evidence_items, source, reason, jd_match_pct) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    scores.forEach(s => {
+      insertEvidence.run(scorecardId, s.parameter_id, s.score, s.confidence || 0.5, JSON.stringify(s.evidence || []), 'auto', s.reason || null, pct);
+    });
+    storeRequirements(db, jobDescId, enhanced.jdAnalysis ? enhanced.evidenceResults.map(e => ({ text: e.requirement, term: e.term, category: e.category, importance: e.importance })) : []);
+    storeMustHaveResults(db, scorecardId, jobDescId, enhanced.mustHaveCheck);
     db.prepare('INSERT INTO scorecard_updates (scorecard_id, source) VALUES (?, ?)').run(scorecardId, 'numerology_suggested');
     db.exec('COMMIT');
     const sc = loadScorecard(emp.id);
-    res.json({ capability_match_pct: pct, matched, missing, scores: sc.scores, scorecard: sc, auto_rated: true });
+    res.json({ capability_match_pct: pct, matched, missing, scores: sc.scores, scorecard: sc, auto_rated: true, must_have: enhanced.mustHaveCheck, overall_confidence: enhanced.overallConfidence });
   } catch (e) {
     try { db.exec('ROLLBACK'); } catch (ignored) {}
     res.status(400).json({ error: e.message });
@@ -841,6 +852,106 @@ router.post('/upload-excel', upload.single('file'), (req, res) => {
     created,
     message: `${updated} record(s) updated. ${created} new employee(s) created from Excel.`,
   });
+});
+
+router.get('/employees/:id/evidence', (req, res) => {
+  const emp = db.prepare('SELECT id FROM users WHERE id = ? AND role = ?').get(req.params.id, 'employee');
+  if (!emp) return res.status(404).json({ error: 'Employee not found' });
+  const sc = db.prepare('SELECT id FROM scorecards WHERE employee_id = ?').get(emp.id);
+  if (!sc) return res.json({ evidence: [] });
+  const evidence = db.prepare('SELECT * FROM parameter_evidence WHERE scorecard_id = ? ORDER BY parameter_id').all(sc.id);
+  res.json({ evidence: evidence.map(e => ({ ...e, evidence_items: JSON.parse(e.evidence_items || '[]') })) });
+});
+
+router.get('/employees/:id/must-have', (req, res) => {
+  const emp = db.prepare('SELECT id FROM users WHERE id = ? AND role = ?').get(req.params.id, 'employee');
+  if (!emp) return res.status(404).json({ error: 'Employee not found' });
+  const sc = db.prepare('SELECT id FROM scorecards WHERE employee_id = ?').get(emp.id);
+  if (!sc) return res.json({ results: [], passed: true });
+  const results = db.prepare('SELECT * FROM must_have_results WHERE scorecard_id = ? ORDER BY id').all(sc.id);
+  const passed = results.every(r => r.met);
+  const criticalPassed = results.filter(r => r.severity === 'critical').every(r => r.met);
+  res.json({ results: results.map(r => ({ ...r, evidence: JSON.parse(r.evidence || '[]') })), passed, criticalPassed });
+});
+
+router.get('/employees/filtered', (req, res) => {
+  const { sort, order, jd_id, score_min, score_max, skill, experience_min, experience_max, evaluated } = req.query;
+  let query = `SELECT u.id, u.name AS applicant_name, u.email, u.job_description_id, u.capability_match_pct,
+               u.is_favorite, u.is_archived, u.date_of_birth,
+               sc.id AS scorecard_id, sc.client, sc.position
+               FROM users u LEFT JOIN scorecards sc ON sc.employee_id = u.id
+               WHERE u.role = 'employee'`;
+  const params = [];
+  if (jd_id) { query += ' AND u.job_description_id = ?'; params.push(Number(jd_id)); }
+  if (evaluated === 'yes') { query += ' AND sc.id IS NOT NULL'; }
+  else if (evaluated === 'no') { query += ' AND sc.id IS NULL'; }
+  if (score_min != null || score_max != null) {
+    query += ' AND u.id IN (SELECT employee_id FROM scorecards sc2 JOIN scores s ON s.scorecard_id = sc2.id GROUP BY sc2.employee_id HAVING 1=1';
+    if (score_min != null) { query += ' AND ROUND(CAST(SUM(CAST(s.score AS FLOAT)/5 * (SELECT weightage FROM parameters WHERE id=s.parameter_id)) AS FLOAT) / (SELECT SUM(weightage) FROM parameters) * 100) >= ?'; params.push(Number(score_min)); }
+    if (score_max != null) { query += ' AND ROUND(CAST(SUM(CAST(s.score AS FLOAT)/5 * (SELECT weightage FROM parameters WHERE id=s.parameter_id)) AS FLOAT) / (SELECT SUM(weightage) FROM parameters) * 100) <= ?'; params.push(Number(score_max)); }
+    query += ')';
+  }
+  const sortCol = { overallScore: 'u.capability_match_pct', name: 'u.name', jdMatch: 'u.capability_match_pct' }[sort] || 'u.id';
+  const sortDir = order === 'desc' ? 'DESC' : 'ASC';
+  query += ` ORDER BY ${sortCol} ${sortDir}`;
+  const rows = db.prepare(query).all(...params);
+  const out = rows.map(r => {
+    const sc = r.scorecard_id ? { id: r.scorecard_id, client: r.client, position: r.position } : null;
+    const scores = sc ? db.prepare('SELECT s.score, p.weightage FROM scores s JOIN parameters p ON p.id = s.parameter_id WHERE s.scorecard_id = ?').all(sc.id) : [];
+    const pct = scores.length ? weightedPct(scores) : null;
+    return { ...r, weighted_pct: pct, scorecard: sc };
+  });
+  res.json(out);
+});
+
+router.get('/company-profiles', (req, res) => {
+  const profiles = db.prepare('SELECT * FROM company_profiles ORDER BY id').all();
+  res.json(profiles);
+});
+
+router.post('/company-profiles', (req, res) => {
+  const { name, industry, description, founded_year, headquarters, core_values, technology_stack, required_competencies, preferred_competencies, work_environment } = req.body;
+  if (!name) return res.status(400).json({ error: 'Company name is required' });
+  const info = db.prepare('INSERT INTO company_profiles (name, industry, description, founded_year, headquarters, core_values, technology_stack, required_competencies, preferred_competencies, work_environment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(name, industry || null, description || null, founded_year || null, headquarters || null, core_values || null, technology_stack || null, required_competencies || null, preferred_competencies || null, work_environment || null);
+  const profile = db.prepare('SELECT * FROM company_profiles WHERE id = ?').get(Number(info.lastInsertRowid));
+  res.json(profile);
+});
+
+router.put('/company-profiles/:id', (req, res) => {
+  const existing = db.prepare('SELECT id FROM company_profiles WHERE id = ?').get(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Company profile not found' });
+  const { name, industry, description, founded_year, headquarters, core_values, technology_stack, required_competencies, preferred_competencies, work_environment } = req.body;
+  db.prepare('UPDATE company_profiles SET name=?, industry=?, description=?, founded_year=?, headquarters=?, core_values=?, technology_stack=?, required_competencies=?, preferred_competencies=?, work_environment=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(name, industry || null, description || null, founded_year || null, headquarters || null, core_values || null, technology_stack || null, required_competencies || null, preferred_competencies || null, work_environment || null, req.params.id);
+  const profile = db.prepare('SELECT * FROM company_profiles WHERE id = ?').get(req.params.id);
+  res.json(profile);
+});
+
+router.delete('/company-profiles/:id', (req, res) => {
+  const existing = db.prepare('SELECT id FROM company_profiles WHERE id = ?').get(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Company profile not found' });
+  db.prepare('DELETE FROM company_profiles WHERE id = ?').run(req.params.id);
+  res.json({ deleted: true });
+});
+
+router.get('/jd-weights/:jdId', (req, res) => {
+  const jd = db.prepare('SELECT id FROM job_descriptions WHERE id = ?').get(req.params.jdId);
+  if (!jd) return res.status(404).json({ error: 'JD not found' });
+  const overrides = db.prepare('SELECT jdw.parameter_id, jdw.weightage, p.name FROM jd_weight_overrides jdw JOIN parameters p ON p.id = jdw.parameter_id WHERE jdw.jd_id = ?').all(req.params.jdId);
+  const defaults = db.prepare('SELECT id AS parameter_id, weightage, name FROM parameters ORDER BY id').all();
+  res.json({ overrides, defaults });
+});
+
+router.put('/jd-weights/:jdId', (req, res) => {
+  const jd = db.prepare('SELECT id FROM job_descriptions WHERE id = ?').get(req.params.jdId);
+  if (!jd) return res.status(404).json({ error: 'JD not found' });
+  const { weights } = req.body;
+  if (!weights || !Array.isArray(weights)) return res.status(400).json({ error: 'weights array required' });
+  db.prepare('DELETE FROM jd_weight_overrides WHERE jd_id = ?').run(req.params.jdId);
+  const insert = db.prepare('INSERT INTO jd_weight_overrides (jd_id, parameter_id, weightage) VALUES (?, ?, ?)');
+  for (const w of weights) {
+    if (w.parameter_id && w.weightage != null) insert.run(req.params.jdId, w.parameter_id, w.weightage);
+  }
+  res.json({ updated: true });
 });
 
 // Catch multer errors (file type rejected, too large) and return 400
