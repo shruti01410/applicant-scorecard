@@ -118,6 +118,69 @@ db.exec(`
     value TEXT NOT NULL,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS jd_requirements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    jd_id INTEGER NOT NULL REFERENCES job_descriptions(id) ON DELETE CASCADE,
+    requirement_text TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'other',
+    importance TEXT NOT NULL DEFAULT 'required' CHECK(importance IN ('required','preferred')),
+    skill_term TEXT,
+    min_experience_years INTEGER,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS parameter_evidence (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scorecard_id INTEGER NOT NULL,
+    parameter_id INTEGER NOT NULL,
+    score INTEGER NOT NULL CHECK(score >= 1 AND score <= 5),
+    confidence REAL NOT NULL DEFAULT 0.5 CHECK(confidence >= 0 AND confidence <= 1),
+    evidence_items TEXT NOT NULL DEFAULT '[]',
+    source TEXT DEFAULT 'auto' CHECK(source IN ('auto','manual')),
+    reason TEXT,
+    jd_match_pct REAL,
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(scorecard_id, parameter_id),
+    FOREIGN KEY (scorecard_id) REFERENCES scorecards(id) ON DELETE CASCADE,
+    FOREIGN KEY (parameter_id) REFERENCES parameters(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS must_have_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scorecard_id INTEGER NOT NULL,
+    jd_id INTEGER,
+    requirement_text TEXT NOT NULL,
+    met INTEGER NOT NULL DEFAULT 0,
+    evidence TEXT,
+    severity TEXT DEFAULT 'critical' CHECK(severity IN ('critical','important','nice_to_have')),
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (scorecard_id) REFERENCES scorecards(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS company_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    industry TEXT,
+    description TEXT,
+    founded_year INTEGER,
+    headquarters TEXT,
+    core_values TEXT,
+    technology_stack TEXT,
+    required_competencies TEXT,
+    preferred_competencies TEXT,
+    work_environment TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS jd_weight_overrides (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    jd_id INTEGER NOT NULL REFERENCES job_descriptions(id) ON DELETE CASCADE,
+    parameter_id INTEGER NOT NULL REFERENCES parameters(id),
+    weightage REAL NOT NULL,
+    UNIQUE(jd_id, parameter_id)
+  );
 `);
 
 try {
