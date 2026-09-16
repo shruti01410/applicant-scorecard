@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import { Link, useParams } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { UploadOutlined, FileTextOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { UploadOutlined, FileTextOutlined, ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
 import { api } from '../../services/api';
 import { badge, colorFor } from '../../scoreLabels';
 import { validateResumeFileClient } from '../../services/resumeCheck';
@@ -34,6 +34,9 @@ export default function ScorePage() {
   const [evidenceData, setEvidenceData] = useState([]);
   const [mustHaveData, setMustHaveData] = useState(null);
   const [showEvidence, setShowEvidence] = useState(false);
+  const [companies, setCompanies] = useState([]);
+  const [addCompanyOpen, setAddCompanyOpen] = useState(false);
+  const [addCompanyForm] = Form.useForm();
 
   const totalWeight = parameters.reduce((a, p) => a + p.weightage, 0);
   const weightedPct = Math.round(
@@ -100,6 +103,8 @@ export default function ScorePage() {
           if (Object.keys(scoreFields).length) form.setFieldsValue(scoreFields);
         }
         api.get('/api/admin/job-descriptions').then(setJds).catch(()=>{});
+        api.get('/api/admin/company-numerology').then(d => setCompanies(Array.isArray(d) ? d : d ? [d] : [])).catch(()=>{});
+        if (data && data.company_id) form.setFieldsValue({ company_id: data.company_id });
         fetchCapability();
         fetchEvidenceAndMustHave();
       } catch (e) {
@@ -178,6 +183,7 @@ export default function ScorePage() {
         jd_shared: values.jd_shared ? 1 : 0,
         jd_shared_date: values.jd_shared_date ? dayjs(values.jd_shared_date).format('YYYY-MM-DD') : null,
         remarks: values.remarks,
+        company_id: values.company_id || null,
         scores,
       }));
       message.success('Scorecard saved successfully!');
@@ -185,6 +191,26 @@ export default function ScorePage() {
       message.error(e.message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function onAddCompany(values) {
+    try {
+      const payload = {
+        client_name: values.company_name,
+        founded_year: values.founded_year ? values.founded_year.year() : null,
+        brand_name: values.brand_name || values.company_name,
+        founder_name: values.founder_name || 'Unknown',
+      };
+      const resp = await api.post('/api/admin/company-numerology', JSON.stringify(payload));
+      message.success('Company added');
+      setAddCompanyOpen(false);
+      addCompanyForm.resetFields();
+      const list = await api.get('/api/admin/company-numerology');
+      setCompanies(Array.isArray(list) ? list : list ? [list] : []);
+      if (resp && resp.id) form.setFieldsValue({ company_id: resp.id });
+    } catch (e) {
+      message.error(e.message);
     }
   }
 
@@ -251,6 +277,32 @@ export default function ScorePage() {
             <div className="field"><label><span className="required">*</span> Email</label><Form.Item name="email" noStyle rules={[{ required: true, message: 'Email is required' },{ type: 'email', message: 'Valid email' }]}><Input placeholder="hkhanscorecard.com" /></Form.Item></div>
             <div className="field"><label><span className="required">*</span> Client</label><Form.Item name="client" noStyle rules={[{ required: true, message: 'Client is required' }]}><Input placeholder="Suez" /></Form.Item></div>
             <div className="field"><label>Position</label><Form.Item name="position" noStyle><Input placeholder="Financial Analyst" /></Form.Item></div>
+          </div>
+          <div className="form-grid-2" style={{ marginTop: 12 }}>
+            <div className="field" style={{ gridColumn: '1 / -1' }}>
+              <label>Company (for Deep Parameters)</label>
+              <Form.Item name="company_id" noStyle>
+                <Select
+                  placeholder="Select company"
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  style={{ width: '100%' }}
+                  options={companies.map(c => ({ value: c.id, label: c.client_name }))}
+                  dropdownRender={(menu) => (
+                    <>
+                      {menu}
+                      <div style={{ padding: '4px 8px', borderTop: '1px solid #f0f0f0' }}>
+                        <Button type="link" icon={<PlusOutlined />} size="small" onClick={() => setAddCompanyOpen(true)}>Add New Company</Button>
+                      </div>
+                    </>
+                  )}
+                />
+              </Form.Item>
+              <div style={{ fontSize: 11, color: '#9aa0a6', marginTop: 4 }}>
+                Company numerology feeds into the six Deep Parameters — separate from evidence-based scores.
+              </div>
+            </div>
           </div>
           <div style={{ padding:'0 20px', display:'flex', alignItems:'center', gap:16, marginTop:12, flexWrap:'wrap' }}>
             <Form.Item name="jd_shared" valuePropName="checked" noStyle><Checkbox>Yes, job Description was shared</Checkbox></Form.Item>
@@ -380,6 +432,25 @@ export default function ScorePage() {
             },
           ]}
         />
+      <Modal
+        title="Add New Company"
+        open={addCompanyOpen}
+        onCancel={() => setAddCompanyOpen(false)}
+        footer={null}
+        width={480}
+        destroyOnClose
+      >
+        <Form form={addCompanyForm} layout="vertical" onFinish={onAddCompany}>
+          <Form.Item name="company_name" label="Company Name *" rules={[{ required: true, message: 'Required' }]}><Input placeholder="Acme Corp" /></Form.Item>
+          <Form.Item name="founded_year" label="Founded Date *" rules={[{ required: true, message: 'Required' }]}><DatePicker picker="year" style={{ width: '100%' }} placeholder="YYYY" /></Form.Item>
+          <Form.Item name="brand_name" label="Brand Name"><Input placeholder="Same as company name if blank" /></Form.Item>
+          <Form.Item name="founder_name" label="Founder Name"><Input placeholder="Optional" /></Form.Item>
+          <div style={{ fontSize: 11, color: '#9aa0a6', marginBottom: 12 }}>
+            Company numerology is used for Deep Parameters interpretation only — it does not affect evidence-based recruitment scores.
+          </div>
+          <Button type="primary" htmlType="submit" block>Add Company</Button>
+        </Form>
+      </Modal>
     </div>
   );
 }

@@ -716,13 +716,13 @@ router.post('/employees/:id/auto-rate', uploadDoc.single('resume'), async (req, 
 });
 
 router.get('/employees/:id/scorecard', (req, res) => {
-  const emp = db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(req.params.id);
+  const emp = db.prepare('SELECT id, name, email, company_id FROM users WHERE id = ?').get(req.params.id);
   if (!emp) return res.status(404).json({ error: 'Employee not found' });
 
   const sc = loadScorecard(req.params.id);
-  if (!sc) return res.json({ scorecard: null, scores: [] });
+  if (!sc) return res.json({ scorecard: { company_id: emp.company_id || null }, scores: [] });
 
-  res.json({ scorecard: sc, scores: sc.scores });
+  res.json({ scorecard: { ...sc, company_id: emp.company_id || null }, scores: sc.scores });
 });
 
 router.post('/employees/:id/scorecard', (req, res) => {
@@ -731,7 +731,7 @@ router.post('/employees/:id/scorecard', (req, res) => {
 
   const {
     applicant_name, email, client, position,
-    jd_shared, jd_shared_date, remarks, scores, source,
+    jd_shared, jd_shared_date, remarks, scores, source, company_id,
   } = req.body;
 
   if (!applicant_name) return res.status(400).json({ error: 'applicant_name is required' });
@@ -779,6 +779,12 @@ router.post('/employees/:id/scorecard', (req, res) => {
     cleanScores.forEach(s => insertScore.run(scorecardId, s.parameter_id, s.score));
 
     db.prepare('INSERT INTO scorecard_updates (scorecard_id, source) VALUES (?, ?)').run(scorecardId, updateSource);
+
+    if (company_id != null) {
+      db.prepare('UPDATE users SET company_id = ? WHERE id = ?').run(Number(company_id), emp.id);
+    } else if (company_id === null || company_id === '') {
+      db.prepare('UPDATE users SET company_id = NULL WHERE id = ?').run(emp.id);
+    }
 
     db.exec('COMMIT');
 
