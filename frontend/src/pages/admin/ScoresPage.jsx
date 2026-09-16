@@ -84,7 +84,7 @@ export default function ScoresPage() {
   useEffect(() => {
     if (addOpen) {
       api.get('/api/admin/job-descriptions').then(setJds).catch(() => {});
-      api.get('/api/admin/company-numerology').then(d => setCompanies(Array.isArray(d) ? d : d ? [d] : [])).catch(() => {});
+      api.get('/api/admin/companies').then(d => setCompanies(Array.isArray(d) ? d : d ? [d] : [])).catch(() => {});
     }
     api.get('/api/admin/job-descriptions').then(setJdsList).catch(() => {});
   }, [addOpen]);
@@ -158,11 +158,11 @@ export default function ScoresPage() {
         brand_name: values.brand_name || values.company_name,
         founder_name: values.founder_name || 'Unknown',
       };
-      const resp = await api.post('/api/admin/company-numerology', JSON.stringify(payload));
+      const resp = await api.post('/api/admin/companies', JSON.stringify(payload));
       message.success('Company added');
       setAddCompanyOpen(false);
       addCompanyForm.resetFields();
-      const list = await api.get('/api/admin/company-numerology');
+      const list = await api.get('/api/admin/companies');
       setCompanies(Array.isArray(list) ? list : list ? [list] : []);
       if (resp && resp.id) addForm.setFieldsValue({ company_id: resp.id });
     } catch (e) {
