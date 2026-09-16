@@ -106,17 +106,19 @@ router.get('/employees', (req, res) => {
   let rows;
   const baseSelect = `
       SELECT u.id, u.name, u.email, u.job_description_id, u.capability_match_pct,
-             u.is_favorite, u.is_archived,
-             sc.applicant_name, sc.client, sc.position, sc.id AS scorecard_id
+             u.is_favorite, u.is_archived, u.company_id,
+             sc.applicant_name, sc.client, sc.position, sc.id AS scorecard_id,
+             cnp.client_name AS company_name
       FROM users u
       LEFT JOIN scorecards sc ON sc.employee_id = u.id
+      LEFT JOIN company_numerology_profiles cnp ON cnp.id = u.company_id
       WHERE u.role = 'employee'${whereArchived}${favWhere}`;
   if (search) {
     rows = db.prepare(`
       ${baseSelect}
-        AND (u.name LIKE ? OR u.email LIKE ? OR sc.client LIKE ? OR sc.position LIKE ?)
+        AND (u.name LIKE ? OR u.email LIKE ? OR sc.client LIKE ? OR sc.position LIKE ? OR cnp.client_name LIKE ?)
       ORDER BY u.is_favorite DESC, u.name
-    `).all(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+    `).all(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
   } else {
     rows = db.prepare(`${baseSelect} ORDER BY u.is_favorite DESC, u.name`).all();
   }
@@ -145,6 +147,8 @@ router.get('/employees', (req, res) => {
       capability_match_pct: r.capability_match_pct,
       is_favorite: !!r.is_favorite,
       is_archived: !!r.is_archived,
+      company_id: r.company_id || null,
+      company_name: r.company_name || null,
     };
   });
 
@@ -478,6 +482,7 @@ router.post('/employees', uploadDoc.fields([{ name: 'resume', maxCount: 1 }, { n
     let job_description_id = req.body.job_description_id ? Number(req.body.job_description_id) : null;
     const position = String(req.body.position || req.body.role || '').trim();
     const client = String(req.body.client || '').trim();
+    const company_id = req.body.company_id ? Number(req.body.company_id) : null;
     if (!name || !email) return res.status(400).json({ error: 'name and email are required' });
     const dob = String(req.body.date_of_birth || '').trim();
     if (!dob) return res.status(400).json({ error: 'Date of Birth is required.' });
@@ -537,8 +542,8 @@ router.post('/employees', uploadDoc.fields([{ name: 'resume', maxCount: 1 }, { n
       resume_file_path = saveBuffer(resumeFile.buffer, resumeFile.originalname, 'resumes');
     }
 
-    const insert = db.prepare('INSERT INTO users (username, password, role, name, email, date_of_birth, job_description_id, resume_file_path, resume_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
-    insert.run(username, bcrypt.hashSync('12345', 10), 'employee', name, email, dob, job_description_id, resume_file_path, resume_text);
+    const insert = db.prepare('INSERT INTO users (username, password, role, name, email, date_of_birth, job_description_id, resume_file_path, resume_text, company_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    insert.run(username, bcrypt.hashSync('12345', 10), 'employee', name, email, dob, job_description_id, resume_file_path, resume_text, company_id);
     const user = db.prepare('SELECT id, name, email, date_of_birth, job_description_id, capability_match_pct FROM users WHERE email = ?').get(email);
 
     let autoScores = null;

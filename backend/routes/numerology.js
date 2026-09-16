@@ -313,8 +313,9 @@ router.get('/employees/:id/numerology/numo-params', (req, res) => {
   let company = null;
   if (req.query.companyId) company = db.prepare('SELECT * FROM company_numerology_profiles WHERE id = ?').get(req.query.companyId);
   else {
-    const user = db.prepare('SELECT job_description_id FROM users WHERE id = ?').get(req.params.id);
-    if (user && user.job_description_id) {
+    const user = db.prepare('SELECT job_description_id, company_id FROM users WHERE id = ?').get(req.params.id);
+    if (user && user.company_id) company = db.prepare('SELECT * FROM company_numerology_profiles WHERE id = ?').get(user.company_id);
+    if (!company && user && user.job_description_id) {
       const jd = db.prepare('SELECT company_id FROM job_descriptions WHERE id = ?').get(user.job_description_id);
       if (jd && jd.company_id) company = db.prepare('SELECT * FROM company_numerology_profiles WHERE id = ?').get(jd.company_id);
     }
@@ -595,8 +596,9 @@ router.get('/employees/:id/numerology/company-match', (req, res) => {
   } else if (req.query.company_id) {
     company = db.prepare('SELECT * FROM company_numerology_profiles WHERE id = ?').get(req.query.company_id);
   } else {
-    const user = db.prepare('SELECT job_description_id FROM users WHERE id = ?').get(req.params.id);
-    if (user && user.job_description_id) {
+    const user = db.prepare('SELECT job_description_id, company_id FROM users WHERE id = ?').get(req.params.id);
+    if (user && user.company_id) company = db.prepare('SELECT * FROM company_numerology_profiles WHERE id = ?').get(user.company_id);
+    if (!company && user && user.job_description_id) {
       const jd = db.prepare('SELECT company_id FROM job_descriptions WHERE id = ?').get(user.job_description_id);
       if (jd && jd.company_id) company = db.prepare('SELECT * FROM company_numerology_profiles WHERE id = ?').get(jd.company_id);
     }
