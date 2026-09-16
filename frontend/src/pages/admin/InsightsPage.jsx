@@ -29,9 +29,9 @@ const ELEMENT_META = {
 };
 
 const TRIGUNA_META = {
-  Sattva: { color: '#10b981', desc: 'Clarity, balance, wisdom' },
-  Rajas: { color: '#f59e0b', desc: 'Drive, ambition, restlessness' },
-  Tamas: { color: '#6b7280', desc: 'Stability, resistance to change' },
+  Sattva: { color: '#10b981', label: 'Clarity', desc: 'Clarity, balance, wisdom' },
+  Rajas: { color: '#f59e0b', label: 'Drive', desc: 'Drive, ambition, restlessness' },
+  Tamas: { color: '#6b7280', label: 'Stability', desc: 'Stability, resistance to change' },
 };
 
 const CATEGORY_ICONS = {
@@ -100,10 +100,10 @@ function TriNatureMini({ tri }) {
       })}
       <div style={{ marginTop: 4, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <Tag color={ELEMENT_META[tri.dominantElement]?.color} style={{ margin: 0, fontSize: 10 }}>
-          {tri.dominantElement} — {ELEMENT_META[tri.dominantElement]?.label}
+          {ELEMENT_META[tri.dominantElement]?.label}
         </Tag>
         <Tag color={TRIGUNA_META[tri.dominantMode]?.color} style={{ margin: 0, fontSize: 10 }}>
-          {tri.dominantMode}
+          {TRIGUNA_META[tri.dominantMode]?.label || tri.dominantMode}
         </Tag>
       </div>
       {tri.signature && (
@@ -206,7 +206,7 @@ function CandidateCard({ c, selected, onToggle, onView }) {
           {Object.entries(c.tri_nature.triguna).filter(([k]) => k !== 'raw').map(([mode, pct]) => (
             <Tooltip key={mode} title={TRIGUNA_META[mode]?.desc}>
               <Tag color={TRIGUNA_META[mode]?.color} style={{ margin: 0, fontSize: 10 }}>
-                {mode}: {pct}%
+                {TRIGUNA_META[mode]?.label || mode}: {pct}%
               </Tag>
             </Tooltip>
           ))}
@@ -328,7 +328,7 @@ function ComparisonTable({ candidates, section }) {
               {candidates.map(c => (
                 <td key={c.id} style={{ textAlign: 'center', padding: '8px 12px', borderBottom: '1px solid #f0f2f7' }}>
                   <Tag color={ELEMENT_META[c.tri_nature?.dominantElement]?.color} style={{ margin: 0, fontSize: 11 }}>
-                    {c.tri_nature?.dominantElement} — {ELEMENT_META[c.tri_nature?.dominantElement]?.label}
+                    {ELEMENT_META[c.tri_nature?.dominantElement]?.label}
                   </Tag>
                 </td>
               ))}
@@ -402,7 +402,7 @@ function ComparisonTable({ candidates, section }) {
             {modes.map(mode => (
               <tr key={mode} style={{ background: '#fff' }}>
                 <td style={{ padding: '8px 12px', borderBottom: '1px solid #f0f2f7', position: 'sticky', left: 0, background: '#fff', zIndex: 1 }}>
-                  <Tag color={TRIGUNA_META[mode]?.color} style={{ margin: 0, fontSize: 11 }}>{mode}</Tag>
+                  <Tag color={TRIGUNA_META[mode]?.color} style={{ margin: 0, fontSize: 11 }}>{TRIGUNA_META[mode]?.label || mode}</Tag>
                 </td>
                 {candidates.map(c => {
                   const s = c.tri_nature?.triguna?.[mode] || 0;
@@ -518,7 +518,7 @@ export default function InsightsPage() {
     { key: 'deep', label: '6 Deep Parameters' },
     { key: 'elements', label: '4 Elements' },
     { key: 'categories', label: '6 Categories' },
-    { key: 'triguna', label: 'Triguna Modes' },
+    { key: 'triguna', label: 'Energy Modes' },
   ];
 
   return (
