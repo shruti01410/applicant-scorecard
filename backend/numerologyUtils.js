@@ -239,12 +239,31 @@ function computeNumoParameters(profile, company) {
       diffForOutcome = diffBirth;
       reasons.push(`Birth Number ${birth} (→${normBirth}) vs ${targetNum}`);
     } else if (p.key === 'intuition') {
-      if (birth === 11 || birth === 22 || lifePath === 11 || lifePath === 22) score = 5;
-      else if (normLife === 2 || normBirth === 2) score = 4;
-      else if (personalYear === 7) score = 4;
+      // Target: 11 (Seer). Score by inherent intuitive capacity (DOB + name numbers).
+      // Personal Year excluded — it's identical for all candidates (current year) and doesn't measure individual intuition.
+      const isMaster11 = birth === 11 || lifePath === 11;
+      const isMaster22 = birth === 22 || lifePath === 22;
+      const isMaster33 = birth === 33 || lifePath === 33;
+      const reducesTo2 = normLife === 2 || normBirth === 2;
+      const reducesTo7 = normLife === 7 || normBirth === 7;
+      const reducesTo4 = normLife === 4 || normBirth === 4;
+      const exprReduced = expr > 9 ? reduceDigits(expr, { keepMaster: false }) : expr;
+      const exprIs2or7 = exprReduced === 2 || exprReduced === 7;
+      if (isMaster11) score = 5;
+      else if (isMaster22 || isMaster33) score = 5;
+      else if (reducesTo2 && exprIs2or7) score = 4;
+      else if (reducesTo2 || reducesTo7) score = 4;
+      else if (exprIs2or7) score = 3;
+      else if (reducesTo4) score = 3;
+      else if (diffLife <= 1 || diffBirth <= 1) score = 3;
       else score = 2;
-      diffForOutcome = (birth === 11 || birth === 22 || lifePath === 11 || lifePath === 22) ? 0 : Math.min(diffLife, diffBirth);
-      reasons.push(`Birth ${birth}, Life ${lifePath}, PY ${personalYear} — master 11/22 kept as Seer signal`);
+      diffForOutcome = isMaster11 ? 0 : isMaster22 || isMaster33 ? 1 : reducesTo2 ? 2 : Math.min(diffLife, diffBirth);
+      const parts = [];
+      if (isMaster11) parts.push('Master 11 — strong Seer signal');
+      else if (isMaster22) parts.push('Master 22 — Architect channeling Seer vision');
+      else if (isMaster33) parts.push('Master 33 — Master Teacher with intuitive depth');
+      else parts.push(`Birth ${birth} (→${normBirth}), Life ${lifePath} (→${normLife}), Expression ${expr} (→${exprReduced})`);
+      reasons.push(parts[0]);
     }
     const { outcomeFor } = require('./numerologyOutcome');
     const { tone, label } = outcomeFor(diffForOutcome);
