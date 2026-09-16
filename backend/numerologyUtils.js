@@ -225,12 +225,15 @@ function computeNumoParameters(profile, company) {
       diffForOutcome = diffHarmony;
       reasons.push(companyNum != null ? `Composite ${composite} vs Company ${companyNum} (Δ${diffHarmony}) — same as Trajectory Alignment` : 'No company number yet');
     } else if (p.key === 'destiny') {
-      if (diffExpr === 0) score = 5;
-      else if (diffExpr === 1) score = 4;
-      else if (diffExpr >= 4) score = 2;
+      // Destiny = internal alignment: expression number vs life path number
+      // Measures whether name energy matches life path direction
+      const diffExprLP = Math.abs(normExpr - normLife);
+      if (diffExprLP === 0) score = 5;
+      else if (diffExprLP === 1) score = 4;
+      else if (diffExprLP >= 4) score = 2;
       else score = 3;
-      diffForOutcome = diffExpr;
-      reasons.push(`Expression ${expr} (→${normExpr}) vs ${targetNum} (Δ${diffExpr})`);
+      diffForOutcome = diffExprLP;
+      reasons.push(`Expression ${expr} (→${normExpr}) vs Life Path ${lifePath} (→${normLife}) (Δ${diffExprLP})`);
     } else if (p.key === 'karmic') {
       if (birth === 6 || birth === 11 || birth === 22) score = 5;
       else if (normBirth === 6) score = 4;
