@@ -257,7 +257,7 @@ function computeNumoParameters(profile, company) {
       else if (reducesTo4) score = 3;
       else if (diffLife <= 1 || diffBirth <= 1) score = 3;
       else score = 2;
-      diffForOutcome = isMaster11 ? 0 : isMaster22 || isMaster33 ? 1 : reducesTo2 ? 2 : Math.min(diffLife, diffBirth);
+      diffForOutcome = score === 5 ? 0 : score === 4 ? 1 : score === 3 ? 2 : 5;
       const parts = [];
       if (isMaster11) parts.push('Master 11 — strong Seer signal');
       else if (isMaster22) parts.push('Master 22 — Architect channeling Seer vision');
