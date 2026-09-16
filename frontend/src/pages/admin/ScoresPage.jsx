@@ -10,6 +10,7 @@ import { validateResumeFileClient } from '../../services/resumeCheck';
 import ResumeIntegrity from '../../components/ResumeIntegrity';
 import CompareCandidates from '../../components/CompareCandidates';
 import FilterPanel from '../../components/FilterPanel';
+import SortFilterDrawer from '../../components/SortFilterDrawer';
 
 const { Title } = Typography;
 
@@ -53,6 +54,11 @@ export default function ScoresPage() {
   const [sortDir, setSortDir] = useState('asc');
   const [advancedFilters, setAdvancedFilters] = useState(null);
   const [jdsList, setJdsList] = useState([]);
+
+  function applyAdvancedFilters(f) {
+    setAdvancedFilters(f);
+    setPage(1);
+  }
 
   async function fetchRows() {
     setLoading(true);
@@ -164,13 +170,41 @@ export default function ScoresPage() {
     return <span style={{ marginLeft:4 }}>{sortDir === 'asc' ? '↑' : '↓'}</span>;
   }
 
-  const sorted = [...rows].sort((a, b) => {
-    if (!sortKey) return 0;
-    let av = a[sortKey], bv = b[sortKey];
-    if (av == null) av = sortDir === 'asc' ? Infinity : -Infinity;
-    if (bv == null) bv = sortDir === 'asc' ? Infinity : -Infinity;
-    if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
-    return sortDir === 'asc' ? av - bv : bv - av;
+  const filtered = [...rows].filter(r => {
+    if (!advancedFilters) return true;
+    const { scoreRange, experience, evaluation, jd } = advancedFilters;
+    if (jd && jd.length > 0 && !jd.some(j => r.position && r.position.toLowerCase().includes(j.toLowerCase().split(' · ')[0].toLowerCase()) || r.client && r.client.toLowerCase().includes(j.toLowerCase().split(' · ').pop().toLowerCase()))) return false;
+    if (scoreRange && scoreRange.length > 0) {
+      const pct = r.weighted_pct;
+      if (pct == null) return false;
+      const match = scoreRange.some(sr => {
+        if (sr === '90-100 (Excellent)') return pct >= 90;
+        if (sr === '80-89 (Good)') return pct >= 80 && pct < 90;
+        if (sr === '70-79') return pct >= 70 && pct < 80;
+        if (sr === 'Below 70') return pct < 70;
+        return true;
+      });
+      if (!match) return false;
+    }
+    return true;
+  });
+
+  const sorted = [...filtered].sort((a, b) => {
+    let key = sortKey;
+    let dir = sortDir;
+    if (advancedFilters && advancedFilters.sort) {
+      const map = { 'Recently added': 'id', 'Overall Score': 'weighted_pct', 'JD Match': 'capability_match_pct', 'Name': 'applicant_name' };
+      key = map[advancedFilters.sort] || key;
+    }
+    if (advancedFilters && advancedFilters.order) {
+      dir = advancedFilters.order === 'Low to high' ? 'asc' : 'desc';
+    }
+    if (!key) return 0;
+    let av = a[key], bv = b[key];
+    if (av == null) av = dir === 'asc' ? Infinity : -Infinity;
+    if (bv == null) bv = dir === 'asc' ? Infinity : -Infinity;
+    if (typeof av === 'string') return dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+    return dir === 'asc' ? av - bv : bv - av;
   });
   const paged = sorted.slice((page-1)*pageSize, page*pageSize);
   useEffect(()=>{ setPage(1); },[search, filter]);
@@ -203,7 +237,9 @@ export default function ScoresPage() {
         {search && <button className="search-clear" onClick={()=>setSearch('')}>✕</button>}
       </div>
 
-      <FilterPanel jds={jdsList} onFilter={(f) => { setAdvancedFilters(f); }} onClear={() => { setAdvancedFilters(null); }} />
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+        <SortFilterDrawer resultCount={rows.length} onApply={applyAdvancedFilters} />
+      </div>
 
       <div className="card" style={{ overflow:'hidden' }}>
         <table className="table">
