@@ -372,14 +372,6 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
       }
     }
 
-    // FOOTER
-    doc.save();
-    doc.fontSize(7).fillColor('#aaaaaa').font('Helvetica-Oblique').text(
-      'This is a playful reflection \u2014 not a hiring signal. Real judgment comes from interview, references, and lived work, not numbers.',
-      MX, BTM, { width: CW, align: 'center' }
-    );
-    doc.restore();
-
     doc.end();
   } catch (err) {
     console.error('PDF generation error:', err);
