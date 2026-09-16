@@ -199,56 +199,54 @@ function computeNumoParameters(profile, company) {
     let diffExpr = Math.abs(targetNum - normExpr);
     let score = 3;
     let reasons = [];
+    let diffForOutcome = null;
     if (p.key === 'stillness') {
       if (personalYear === 7 || personalYear === 2 || personalYear === 6) score = 5;
       else if (personalYear === 4) score = 4;
       else if (personalYear === 5 || personalYear === 8) score = 2;
       else score = 3;
+      diffForOutcome = score === 5 || score === 4 ? 0 : score === 3 ? 2 : 5;
       reasons.push(`Personal Year ${personalYear} → ${PERSONAL_YEAR_THEMES[personalYear] ? PERSONAL_YEAR_THEMES[personalYear].theme : '—'}`);
     } else if (p.key === 'luck') {
       if (diffLife === 0 || diffPY === 0) score = 5;
       else if (diffLife === 1 || diffPY === 1) score = 4;
       else if (diffLife >= 4 && diffPY >= 4) score = 2;
       else score = 3;
+      diffForOutcome = Math.min(diffLife, diffPY);
       reasons.push(`Life Path ${lifePath} vs ${targetNum} (Δ${diffLife}), PY ${personalYear} vs ${targetNum} (Δ${diffPY})`);
     } else if (p.key === 'harmony') {
-      // Option A chosen: Harmony retired as standalone metric — now a thin wrapper over
-      // Alignment's Trajectory Alignment (composite vs Founded). One source of truth.
-      // We keep the card for now but its diff is shared with alignment.trajectoryDiff
-      // via buildAlignment; see routes/numerology.js company-match overall.
+      // Harmony = composite personal number vs company founded number
+      const diffHarmony = companyNum != null ? Math.abs(normComposite - companyNum) : 99;
       if (companyNum == null) score = 3;
-      else if (diffComposite === 0) score = 5;
-      else if (diffComposite === 1) score = 4;
-      else if (diffComposite >= 4) score = 2;
+      else if (diffHarmony === 0) score = 5;
+      else if (diffHarmony === 1) score = 4;
+      else if (diffHarmony >= 4) score = 2;
       else score = 3;
-      reasons.push(companyNum != null ? `Composite ${composite} vs Company ${companyNum} (Δ${diffComposite}) — same as Trajectory Alignment` : 'No company number yet');
+      diffForOutcome = diffHarmony;
+      reasons.push(companyNum != null ? `Composite ${composite} vs Company ${companyNum} (Δ${diffHarmony}) — same as Trajectory Alignment` : 'No company number yet');
     } else if (p.key === 'destiny') {
       if (diffExpr === 0) score = 5;
       else if (diffExpr === 1) score = 4;
       else if (diffExpr >= 4) score = 2;
       else score = 3;
+      diffForOutcome = diffExpr;
       reasons.push(`Expression ${expr} (→${normExpr}) vs ${targetNum} (Δ${diffExpr})`);
     } else if (p.key === 'karmic') {
       if (birth === 6 || birth === 11 || birth === 22) score = 5;
       else if (normBirth === 6) score = 4;
       else if (diffBirth >= 4) score = 2;
       else score = 3;
+      diffForOutcome = diffBirth;
       reasons.push(`Birth Number ${birth} (→${normBirth}) vs ${targetNum}`);
     } else if (p.key === 'intuition') {
       if (birth === 11 || birth === 22 || lifePath === 11 || lifePath === 22) score = 5;
       else if (normLife === 2 || normBirth === 2) score = 4;
       else if (personalYear === 7) score = 4;
       else score = 2;
+      diffForOutcome = (birth === 11 || birth === 22 || lifePath === 11 || lifePath === 22) ? 0 : Math.min(diffLife, diffBirth);
       reasons.push(`Birth ${birth}, Life ${lifePath}, PY ${personalYear} — master 11/22 kept as Seer signal`);
     }
     const { outcomeFor } = require('./numerologyOutcome');
-    let diffForOutcome = null;
-    if (p.key === 'stillness') diffForOutcome = score === 5 || score === 4 ? 0 : score === 3 ? 2 : 5;
-    else if (p.key === 'luck') diffForOutcome = Math.min(diffLife, diffPY);
-    else if (p.key === 'harmony') diffForOutcome = diffComposite;
-    else if (p.key === 'destiny') diffForOutcome = diffExpr;
-    else if (p.key === 'karmic') diffForOutcome = diffBirth;
-    else if (p.key === 'intuition') diffForOutcome = (birth === 11 || birth === 22 || lifePath === 11 || lifePath === 22) ? 0 : Math.min(diffLife, diffBirth);
     const { tone, label } = outcomeFor(diffForOutcome);
     const resonance = label;
     const extra = p.key === 'harmony' ? { derivedFromAlignment: true, alignmentDimension: 'Trajectory Alignment' } : {};
