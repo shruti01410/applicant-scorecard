@@ -201,19 +201,46 @@ function computeNumoParameters(profile, company) {
     let reasons = [];
     let diffForOutcome = null;
     if (p.key === 'stillness') {
-      if (personalYear === 7 || personalYear === 2 || personalYear === 6) score = 5;
-      else if (personalYear === 4) score = 4;
-      else if (personalYear === 5 || personalYear === 8) score = 2;
-      else score = 3;
+      // Stillness = how grounded the person feels inside THIS company
+      // PY gives personal energy, company gives environment energy
+      const diffPYCompany = companyNum != null ? Math.abs(personalYear - companyNum) : 99;
+      if (companyNum == null) {
+        // Fallback: use PY alone
+        if (personalYear === 7 || personalYear === 2 || personalYear === 6) score = 5;
+        else if (personalYear === 4) score = 4;
+        else if (personalYear === 5 || personalYear === 8) score = 2;
+        else score = 3;
+      } else {
+        // Score by how PY resonates with company energy
+        if (diffPYCompany <= 1) score = 5;
+        else if (diffPYCompany <= 2) score = 4;
+        else if (diffPYCompany <= 3) score = 3;
+        else score = 2;
+      }
       diffForOutcome = score === 5 || score === 4 ? 0 : score === 3 ? 2 : 5;
-      reasons.push(`Personal Year ${personalYear} → ${PERSONAL_YEAR_THEMES[personalYear] ? PERSONAL_YEAR_THEMES[personalYear].theme : '—'}`);
+      reasons.push(companyNum != null ? `PY ${personalYear} vs Company ${companyNum} (Δ${diffPYCompany}) — personal year resonance with company` : `Personal Year ${personalYear} → ${PERSONAL_YEAR_THEMES[personalYear] ? PERSONAL_YEAR_THEMES[personalYear].theme : '—'} (no company set)`);
     } else if (p.key === 'luck') {
-      if (diffLife === 0 || diffPY === 0) score = 5;
-      else if (diffLife === 1 || diffPY === 1) score = 4;
-      else if (diffLife >= 4 && diffPY >= 4) score = 2;
-      else score = 3;
-      diffForOutcome = Math.min(diffLife, diffPY);
-      reasons.push(`Life Path ${lifePath} vs ${targetNum} (Δ${diffLife}), PY ${personalYear} vs ${targetNum} (Δ${diffPY})`);
+      // Luck = how easily opportunities line up between candidate and company
+      const diffLPCompany = companyNum != null ? Math.abs(normLife - companyNum) : 99;
+      const diffPYCompany = companyNum != null ? Math.abs(personalYear - companyNum) : 99;
+      if (companyNum == null) {
+        // Fallback: LP/PY vs target 8
+        if (diffLife === 0 || diffPY === 0) score = 5;
+        else if (diffLife === 1 || diffPY === 1) score = 4;
+        else if (diffLife >= 4 && diffPY >= 4) score = 2;
+        else score = 3;
+        reasons.push(`Life Path ${lifePath} vs ${targetNum} (Δ${diffLife}), PY ${personalYear} vs ${targetNum} (Δ${diffPY}) — no company`);
+      } else {
+        // Score by candidate-company alignment
+        const minDiff = Math.min(diffLPCompany, diffPYCompany);
+        if (minDiff === 0) score = 5;
+        else if (minDiff === 1) score = 4;
+        else if (minDiff <= 3) score = 3;
+        else score = 2;
+        diffForOutcome = minDiff;
+        reasons.push(`LP ${lifePath} vs Company ${companyNum} (Δ${diffLPCompany}), PY ${personalYear} vs Company ${companyNum} (Δ${diffPYCompany})`);
+      }
+      if (diffForOutcome === null) diffForOutcome = Math.min(diffLife, diffPY);
     } else if (p.key === 'harmony') {
       // Harmony = composite personal number vs company founded number
       const diffHarmony = companyNum != null ? Math.abs(normComposite - companyNum) : 99;
@@ -225,53 +252,93 @@ function computeNumoParameters(profile, company) {
       diffForOutcome = diffHarmony;
       reasons.push(companyNum != null ? `Composite ${composite} vs Company ${companyNum} (Δ${diffHarmony}) — same as Trajectory Alignment` : 'No company number yet');
     } else if (p.key === 'destiny') {
-      // Destiny = momentum strength: how clear and directed is the expression energy?
-      // Master numbers (11/22/33) = strongest momentum, single digits = solid, large raw = diluted
+      // Destiny = how well expression energy aligns with company direction
       const rawExpr = expr;
       const isMasterExpr = rawExpr === 11 || rawExpr === 22 || rawExpr === 33;
       const diffExprLP = Math.abs(normExpr - normLife);
       const alignedWithLP = diffExprLP <= 1;
-      if (isMasterExpr && alignedWithLP) score = 5;
-      else if (isMasterExpr) score = 4;
-      else if (alignedWithLP) score = 4;
-      else if (diffExprLP <= 2) score = 3;
-      else if (diffExprLP <= 3) score = 3;
-      else score = 2;
-      diffForOutcome = isMasterExpr ? 0 : alignedWithLP ? 1 : diffExprLP;
-      reasons.push(`Expression ${expr} (→${normExpr}) vs Life Path ${lifePath} (→${normLife}) (Δ${diffExprLP})${isMasterExpr ? ' — master number momentum' : ''}`);
+      if (companyNum == null) {
+        // Fallback: expression vs life path
+        if (isMasterExpr && alignedWithLP) score = 5;
+        else if (isMasterExpr) score = 4;
+        else if (alignedWithLP) score = 4;
+        else if (diffExprLP <= 2) score = 3;
+        else score = 2;
+        reasons.push(`Expression ${expr} (→${normExpr}) vs Life Path ${lifePath} (→${normLife}) (Δ${diffExprLP})${isMasterExpr ? ' — master momentum' : ''} — no company`);
+      } else {
+        // Score by expression-company alignment
+        const diffExprCompany = Math.abs(normExpr - companyNum);
+        if (isMasterExpr && diffExprCompany <= 1) score = 5;
+        else if (isMasterExpr) score = 4;
+        else if (diffExprCompany === 0) score = 5;
+        else if (diffExprCompany === 1) score = 4;
+        else if (diffExprCompany <= 2) score = 3;
+        else score = 2;
+        diffForOutcome = diffExprCompany;
+        reasons.push(`Expression ${expr} (→${normExpr}) vs Company ${companyNum} (Δ${diffExprCompany})${isMasterExpr ? ' — master momentum' : ''}`);
+      }
+      if (diffForOutcome === null) diffForOutcome = isMasterExpr ? 0 : alignedWithLP ? 1 : diffExprLP;
     } else if (p.key === 'karmic') {
-      if (birth === 6 || birth === 11 || birth === 22) score = 5;
-      else if (normBirth === 6) score = 4;
-      else if (diffBirth >= 4) score = 2;
-      else score = 3;
-      diffForOutcome = diffBirth;
-      reasons.push(`Birth Number ${birth} (→${normBirth}) vs ${targetNum}`);
+      // Karmic = responsibility resonance between candidate and company
+      const isKarmicBirth = birth === 6 || birth === 11 || birth === 22;
+      if (companyNum == null) {
+        // Fallback: birth vs target 6
+        if (isKarmicBirth) score = 5;
+        else if (normBirth === 6) score = 4;
+        else if (diffBirth >= 4) score = 2;
+        else score = 3;
+        reasons.push(`Birth Number ${birth} (→${normBirth}) vs 6 — no company`);
+      } else {
+        // Score by birth-company karmic alignment
+        const diffBirthCompany = Math.abs(normBirth - companyNum);
+        if (isKarmicBirth && diffBirthCompany <= 1) score = 5;
+        else if (isKarmicBirth) score = 4;
+        else if (diffBirthCompany === 0) score = 5;
+        else if (diffBirthCompany === 1) score = 4;
+        else if (diffBirthCompany <= 2) score = 3;
+        else score = 2;
+        diffForOutcome = diffBirthCompany;
+        reasons.push(`Birth ${birth} (→${normBirth}) vs Company ${companyNum} (Δ${diffBirthCompany})`);
+      }
+      if (diffForOutcome === null) diffForOutcome = diffBirth;
     } else if (p.key === 'intuition') {
-      // Target: 11 (Seer). Score by inherent intuitive capacity (DOB + name numbers).
-      // Personal Year excluded — it's identical for all candidates (current year) and doesn't measure individual intuition.
+      // Intuition = how well intuitive capacity serves the company
       const isMaster11 = birth === 11 || lifePath === 11;
       const isMaster22 = birth === 22 || lifePath === 22;
       const isMaster33 = birth === 33 || lifePath === 33;
       const reducesTo2 = normLife === 2 || normBirth === 2;
       const reducesTo7 = normLife === 7 || normBirth === 7;
-      const reducesTo4 = normLife === 4 || normBirth === 4;
       const exprReduced = expr > 9 ? reduceDigits(expr, { keepMaster: false }) : expr;
-      const exprIs2or7 = exprReduced === 2 || exprReduced === 7;
-      if (isMaster11) score = 5;
-      else if (isMaster22 || isMaster33) score = 5;
-      else if (reducesTo2 && exprIs2or7) score = 4;
-      else if (reducesTo2 || reducesTo7) score = 4;
-      else if (exprIs2or7) score = 3;
-      else if (reducesTo4) score = 3;
-      else if (diffLife <= 1 || diffBirth <= 1) score = 3;
-      else score = 2;
-      diffForOutcome = score === 5 ? 0 : score === 4 ? 1 : score === 3 ? 2 : 5;
-      const parts = [];
-      if (isMaster11) parts.push('Master 11 — strong Seer signal');
-      else if (isMaster22) parts.push('Master 22 — Architect channeling Seer vision');
-      else if (isMaster33) parts.push('Master 33 — Master Teacher with intuitive depth');
-      else parts.push(`Birth ${birth} (→${normBirth}), Life ${lifePath} (→${normLife}), Expression ${expr} (→${exprReduced})`);
-      reasons.push(parts[0]);
+      if (companyNum == null) {
+        // Fallback: inherent capacity only
+        const reducesTo4 = normLife === 4 || normBirth === 4;
+        const exprIs2or7 = exprReduced === 2 || exprReduced === 7;
+        if (isMaster11) score = 5;
+        else if (isMaster22 || isMaster33) score = 5;
+        else if (reducesTo2 && exprIs2or7) score = 4;
+        else if (reducesTo2 || reducesTo7) score = 4;
+        else if (exprIs2or7) score = 3;
+        else if (reducesTo4) score = 3;
+        else if (diffLife <= 1 || diffBirth <= 1) score = 3;
+        else score = 2;
+        reasons.push(`Birth ${birth} (→${normBirth}), Life ${lifePath} (→${normLife}), Expression ${expr} (→${exprReduced}) — no company`);
+      } else {
+        // Score by intuitive-number company resonance
+        const diffLPCompany = Math.abs(normLife - companyNum);
+        const diffBCompany = Math.abs(normBirth - companyNum);
+        const minDiff = Math.min(diffLPCompany, diffBCompany);
+        if (isMaster11 && minDiff <= 1) score = 5;
+        else if (isMaster11) score = 4;
+        else if (isMaster22 || isMaster33) score = 5;
+        else if (reducesTo2 && minDiff <= 2) score = 4;
+        else if (reducesTo7 && minDiff <= 2) score = 4;
+        else if (minDiff <= 1) score = 4;
+        else if (minDiff <= 2) score = 3;
+        else score = 2;
+        diffForOutcome = minDiff;
+        reasons.push(`LP ${lifePath} (→${normLife}) vs Company ${companyNum} (Δ${diffLPCompany}), Birth ${birth} (→${normBirth}) vs Company ${companyNum} (Δ${diffBCompany})`);
+      }
+      if (diffForOutcome === null) diffForOutcome = score === 5 ? 0 : score === 4 ? 1 : score === 3 ? 2 : 5;
     }
     const { outcomeFor } = require('./numerologyOutcome');
     const { tone, label } = outcomeFor(diffForOutcome);
