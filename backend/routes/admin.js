@@ -151,6 +151,77 @@ router.get('/employees', (req, res) => {
   res.json(out);
 });
 
+router.post('/candidates/compare', (req, res) => {
+  const { candidateIds } = req.body;
+  if (!Array.isArray(candidateIds) || candidateIds.length < 2 || candidateIds.length > 5) {
+    return res.status(400).json({ error: 'Provide between 2 and 5 candidate IDs' });
+  }
+
+  const ids = candidateIds.map(Number).filter(n => n > 0);
+  if (ids.length < 2) return res.status(400).json({ error: 'Provide between 2 and 5 candidate IDs' });
+
+  const allParams = db.prepare('SELECT id, name, description, weightage FROM parameters ORDER BY id').all();
+
+  const candidates = [];
+  for (const id of ids) {
+    const emp = db.prepare(`
+      SELECT u.id, u.name, u.email, u.date_of_birth, u.job_description_id, u.capability_match_pct,
+             sc.applicant_name, sc.client, sc.position, sc.id AS scorecard_id
+      FROM users u
+      LEFT JOIN scorecards sc ON sc.employee_id = u.id
+      WHERE u.id = ? AND u.role = 'employee'
+    `).get(id);
+    if (!emp) return res.status(404).json({ error: `Candidate not found: ${id}` });
+
+    const scores = emp.scorecard_id
+      ? db.prepare(`
+          SELECT s.parameter_id, s.score, p.name, p.description, p.weightage
+          FROM scores s
+          JOIN parameters p ON p.id = s.parameter_id
+          WHERE s.scorecard_id = ?
+          ORDER BY p.id
+        `).all(emp.scorecard_id)
+      : [];
+
+    const scoreMap = Object.fromEntries(scores.map(s => [s.parameter_id, s]));
+    const fullScores = allParams.map(p => {
+      const s = scoreMap[p.id] || { score: 0 };
+      return {
+        parameter_id: p.id,
+        name: p.name,
+        description: p.description,
+        weightage: p.weightage,
+        score: s.score,
+        weighted_contribution: Math.round((s.score / 5) * p.weightage * 10) / 10,
+      };
+    });
+
+    const pct = scores.length ? weightedPct(scores) : null;
+    let badgeLabel, badgeColor;
+    if (pct == null) { badgeLabel = 'Not scored'; badgeColor = '#9CA3AF'; }
+    else if (pct >= 80) { badgeLabel = 'Excellent'; badgeColor = '#4F8F7D'; }
+    else if (pct >= 60) { badgeLabel = 'Good'; badgeColor = '#3d5df0'; }
+    else if (pct >= 40) { badgeLabel = 'Average'; badgeColor = '#f5a623'; }
+    else { badgeLabel = 'Needs Improvement'; badgeColor = '#B97D68'; }
+
+    candidates.push({
+      id: emp.id,
+      name: emp.applicant_name || emp.name,
+      email: emp.email,
+      client: emp.client || '',
+      position: emp.position || '',
+      weighted_pct: pct,
+      badge: { label: badgeLabel, color: badgeColor },
+      capability_match_pct: emp.capability_match_pct || null,
+      date_of_birth: emp.date_of_birth || null,
+      job_description_id: emp.job_description_id || null,
+      scores: fullScores,
+    });
+  }
+
+  res.json({ candidates });
+});
+
 router.patch('/employees/:id/favorite', (req, res) => {
   const emp = db.prepare('SELECT id, is_favorite FROM users WHERE id = ? AND role = ?').get(req.params.id, 'employee');
   if (!emp) return res.status(404).json({ error: 'Employee not found' });

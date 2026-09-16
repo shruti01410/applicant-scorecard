@@ -8,6 +8,7 @@ import { api } from '../../services/api';
 import { badge } from '../../scoreLabels';
 import { validateResumeFileClient } from '../../services/resumeCheck';
 import ResumeIntegrity from '../../components/ResumeIntegrity';
+import CompareCandidates from '../../components/CompareCandidates';
 
 const { Title } = Typography;
 
@@ -45,6 +46,8 @@ export default function ScoresPage() {
   const [integrityData, setIntegrityData] = useState(null);
   const [integrityLoading, setIntegrityLoading] = useState(false);
   const [integrityEmpId, setIntegrityEmpId] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [compareOpen, setCompareOpen] = useState(false);
 
   async function fetchRows() {
     setLoading(true);
@@ -184,6 +187,11 @@ export default function ScoresPage() {
         <div className="header-actions">
           <input type="file" accept=".xlsx,.xls" hidden ref={fileRef} onChange={e=>{ const f=e.target.files&&e.target.files[0]; if(f) handleFile(f); }} />
           <button className="btn-secondary" onClick={()=>fileRef.current&&fileRef.current.click()} disabled={importing}><span style={{ marginRight:6 }}>📄</span>{importing ? 'Processing…' : 'Import from Excel'}</button>
+          {selectedIds.size >= 2 && (
+            <button className="btn-primary" style={{ background:'#3d5df0' }} onClick={()=>setCompareOpen(true)}>
+              Compare ({selectedIds.size})
+            </button>
+          )}
           <button className="btn-primary" onClick={()=>setAddOpen(true)}>+ Add Candidate</button>
         </div>
       </div>
@@ -201,6 +209,12 @@ export default function ScoresPage() {
         <table className="table">
           <thead>
             <tr>
+              <th style={{ width:36 }}>
+                <input type="checkbox" checked={selectedIds.size > 0 && paged.every(r => selectedIds.has(r.id))} onChange={e => {
+                  if (e.target.checked) { const next = new Set(selectedIds); paged.forEach(r => { if (next.size < 5) next.add(r.id); }); setSelectedIds(next); }
+                  else { const next = new Set(selectedIds); paged.forEach(r => next.delete(r.id)); setSelectedIds(next); }
+                }} />
+              </th>
               <th style={{ width:36 }}>#</th>
               <th>EMPLOYEE</th>
               <th>CLIENT</th>
@@ -210,10 +224,19 @@ export default function ScoresPage() {
             </tr>
           </thead>
           <tbody>
-            {loading ? <tr><td colSpan={6} style={{ textAlign:'center', padding:24, color:'#94a3b8' }}>Loading…</td></tr>
-            : paged.length===0 ? <tr><td colSpan={6} style={{ textAlign:'center', padding:32, color:'#94a3b8' }}>No employees found</td></tr>
+            {loading ? <tr><td colSpan={7} style={{ textAlign:'center', padding:24, color:'#94a3b8' }}>Loading…</td></tr>
+            : paged.length===0 ? <tr><td colSpan={7} style={{ textAlign:'center', padding:32, color:'#94a3b8' }}>No employees found</td></tr>
             : paged.map((row,i)=>(
-              <tr key={row.id} style={{ opacity: row.is_archived ? 0.6 : 1, background: row.is_favorite ? '#fffbeb' : undefined }}>
+              <tr key={row.id} style={{ opacity: row.is_archived ? 0.6 : 1, background: row.is_favorite ? '#fffbeb' : selectedIds.has(row.id) ? '#eef2ff' : undefined }}>
+                <td>
+                  <input type="checkbox" checked={selectedIds.has(row.id)} onChange={() => {
+                    const next = new Set(selectedIds);
+                    if (next.has(row.id)) next.delete(row.id);
+                    else if (next.size < 5) next.add(row.id);
+                    else { message.warning('Maximum 5 candidates for comparison'); return; }
+                    setSelectedIds(next);
+                  }} />
+                </td>
                 <td className="td-num">{(page-1)*pageSize + i + 1}</td>
                 <td>
                   <div className="emp-name" style={{ color:'#1e293b', fontWeight:600 }}><Link to={`/scores/${row.id}`} style={{ color:'#1e293b', textDecoration:'none' }}>{row.applicant_name}</Link> {row.is_favorite && <StarFilled style={{ color:'#f59e0b', fontSize:11, marginLeft:4 }}/>} {row.is_archived && <Tag style={{ marginLeft:6, fontSize:10 }}>Archived</Tag>}</div>
@@ -289,6 +312,20 @@ export default function ScoresPage() {
           integrityData={integrityData}
           loading={integrityLoading}
           onCheck={() => handleIntegrityCheck(integrityEmpId)}
+        />
+      </Modal>
+      <Modal
+        title={null}
+        open={compareOpen}
+        onCancel={() => { setCompareOpen(false); setSelectedIds(new Set()); }}
+        footer={null}
+        width={960}
+        destroyOnClose
+        styles={{ body: { padding: 0 } }}
+      >
+        <CompareCandidates
+          candidateIds={[...selectedIds]}
+          onClose={() => { setCompareOpen(false); setSelectedIds(new Set()); }}
         />
       </Modal>
     </div>
