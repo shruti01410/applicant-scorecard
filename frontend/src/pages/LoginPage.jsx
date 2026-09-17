@@ -14,7 +14,8 @@ export default function LoginPage() {
 
   useEffect(() => {
     import('../services/firebase')
-      .then((m) => setGoogleEnabled(m.FIREBASE_ENABLED))
+      .then((m) => m.firebaseLoginAvailable())
+      .then((ok) => setGoogleEnabled(ok))
       .catch(() => setGoogleEnabled(false));
   }, []);
 
@@ -35,8 +36,8 @@ export default function LoginPage() {
     setGoogleLoading(true);
     setError('');
     try {
-      const { FIREBASE_ENABLED, signInWithGoogle } = await import('../services/firebase');
-      if (!FIREBASE_ENABLED) {
+      const { firebaseLoginAvailable, signInWithGoogle } = await import('../services/firebase');
+      if (!(await firebaseLoginAvailable())) {
         setError('Google login is not enabled for this deployment yet.');
         return;
       }

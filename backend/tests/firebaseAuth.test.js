@@ -62,6 +62,7 @@ async function withApi(db, verifyFn, configured = true, handler) {
       exports: {
         isFirebaseConfigured: () => configured,
         verifyGoogleIdToken: async (token) => verifyFn(token),
+        webConfig: () => ({ enabled: false, apiKey: '', authDomain: '', projectId: '', appId: '' }),
       },
     };
     delete require.cache[authPath];
@@ -164,6 +165,48 @@ test('FA7. missing idToken is rejected 400', async () => {
     assert.equal(r.status, 400);
     assert.match(r.body.error, /idToken is required/);
   });
+});
+
+test('FA9. firebase-config endpoint exposes the web SDK config to the login screen', async () => {
+  const db = seededDb();
+  const fbPath = require.resolve('../firebaseAuth');
+  const savedFb = require.cache[fbPath];
+  try {
+    require.cache[fbPath] = {
+      exports: {
+        isFirebaseConfigured: () => true,
+        verifyGoogleIdToken: async () => ({}),
+        webConfig: () => ({
+          enabled: true,
+          apiKey: 'AIzaSyTEST',
+          authDomain: 'x.firebaseapp.com',
+          projectId: 'astrologyai-78794',
+          appId: '1:1:web:test',
+        }),
+      },
+    };
+    delete require.cache[require.resolve('../routes/auth')];
+    const app = express();
+    app.use(express.json());
+    app.use('/api/auth', require('../routes/auth'));
+    const server = await new Promise((resolve) => {
+      const instance = app.listen(0, '127.0.0.1', () => resolve(instance));
+    });
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.address().port}/api/auth/firebase-config`);
+      const body = await res.json();
+      assert.equal(res.status, 200);
+      assert.equal(body.enabled, true);
+      assert.equal(body.apiKey, 'AIzaSyTEST');
+      assert.equal(body.projectId, 'astrologyai-78794');
+    } finally {
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+      require.cache[fbPath] = savedFb;
+    }
+  } finally {
+    require.cache[fbPath] = savedFb;
+  }
 });
 
 test('FA8. admin google login works when the admin has a connected Gmail account (gmail_authorized syncs)', async () => {

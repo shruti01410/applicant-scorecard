@@ -2,10 +2,16 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../database');
-const { isFirebaseConfigured, verifyGoogleIdToken } = require('../firebaseAuth');
+const { isFirebaseConfigured, verifyGoogleIdToken, webConfig } = require('../firebaseAuth');
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'scorecard-secret-key';
+
+// Public Firebase web SDK config for the login screen. Read at runtime so the
+// frontend does not depend on build-time inlining of VITE_* variables.
+router.get('/firebase-config', (req, res) => {
+  res.json(webConfig());
+});
 
 router.post('/login', (req, res) => {
   const username = String(req.body.username || '').trim();
