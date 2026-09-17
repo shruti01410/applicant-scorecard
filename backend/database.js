@@ -57,6 +57,32 @@ db.exec(`
     FOREIGN KEY (scorecard_id) REFERENCES scorecards(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS candidate_decisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    candidate_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    jd_id INTEGER REFERENCES job_descriptions(id),
+    decision TEXT NOT NULL CHECK(decision IN ('approved', 'rejected')),
+    reason_code TEXT,
+    recruiter_feedback TEXT,
+    evidence_snapshot TEXT,
+    decided_by INTEGER REFERENCES users(id),
+    decided_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS candidate_emails (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    candidate_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    decision_id INTEGER REFERENCES candidate_decisions(id) ON DELETE CASCADE,
+    recipient_email TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'sent', 'failed')),
+    reviewed_by INTEGER REFERENCES users(id),
+    reviewed_at DATETIME,
+    sent_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS numerology_archetypes (
     number INTEGER PRIMARY KEY,
     name TEXT NOT NULL,

@@ -25,6 +25,7 @@ export default function AdminLayout() {
             <Link to="/" className="nav-link">Home</Link>
             <Link to="/scores" className="nav-link">Scores</Link>
             <Link to="/job-descriptions" className="nav-link">JDs</Link>
+            <Link to="/decision-center" className="nav-link">Decisions</Link>
             <Link to="/insights" className="nav-link">Insights</Link>
           </div>
           <div className="nav-right" style={{ alignItems:'center', gap:8 }}>

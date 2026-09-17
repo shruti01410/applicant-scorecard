@@ -12,6 +12,7 @@ import { validateResumeFileClient } from '../../services/resumeCheck';
 import NumerologyTab from './numerology/NumerologyTab';
 import MustHaveGate from '../../components/MustHaveGate';
 import EvidenceDisplay from '../../components/EvidenceDisplay';
+import { DecisionStatus } from '../../components/DecisionModals';
 
 const { Title, Text } = Typography;
 
@@ -37,6 +38,7 @@ export default function ScorePage() {
   const [companies, setCompanies] = useState([]);
   const [addCompanyOpen, setAddCompanyOpen] = useState(false);
   const [addCompanyForm] = Form.useForm();
+  const [decisionInfo, setDecisionInfo] = useState(null);
 
   const totalWeight = parameters.reduce((a, p) => a + p.weightage, 0);
   const weightedPct = Math.round(
@@ -107,6 +109,7 @@ export default function ScorePage() {
         if (data && data.company_id) form.setFieldsValue({ company_id: data.company_id });
         fetchCapability();
         fetchEvidenceAndMustHave();
+        fetchDecision();
       } catch (e) {
         message.error(e.message);
       } finally {
@@ -114,6 +117,15 @@ export default function ScorePage() {
       }
     })();
   }, [id]);
+
+  async function fetchDecision() {
+    try {
+      const d = await api.get(`/api/admin/employees/${id}/decision`);
+      setDecisionInfo(d);
+    } catch (e) {
+      setDecisionInfo(null);
+    }
+  }
 
   async function handleResumeUpload() {
     if (!resumeFile) return message.warning('Select a PDF/DOCX first');
@@ -228,6 +240,12 @@ export default function ScorePage() {
               <Title level={4} style={{ margin:0, fontSize:18, color:'#1e293b' }}>Score: {applicantName}</Title>
             </div>
             <span className="score-badge" style={{ borderColor: b.color, color: b.color, background:'#fff', fontSize:12 }}>{weightedPct}% — {b.label}</span>
+            <DecisionStatus
+              candidateId={id}
+              decision={decisionInfo && decisionInfo.decision}
+              draft={decisionInfo && decisionInfo.draft}
+              onChanged={fetchDecision}
+            />
           </div>
         </div>
       )}
