@@ -5,12 +5,14 @@ const fs      = require('fs');
 require('./database'); // initialise & seed DB on startup
 
 const app = express();
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json());
 
 app.use('/api/auth',     require('./routes/auth'));
 app.use('/api/admin',    require('./routes/admin'));
 app.use('/api/admin',    require('./routes/decisions'));
+app.use('/api/admin',    require('./routes/recruiter'));
 app.use('/api/admin/gmail', require('./routes/gmail'));
 app.use('/api/admin',    require('./routes/numerology'));
 app.use('/api/admin',    require('./routes/numerologyPdf'));

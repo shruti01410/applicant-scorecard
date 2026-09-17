@@ -22,6 +22,9 @@ function safeReturnTo(value) {
 // Connection status used by the UI (never returns tokens).
 router.get('/status', (req, res) => {
   const conn = gmail.getConnection(req.user.id);
+  if (conn) {
+    db.prepare(`UPDATE recruiter_profiles SET gmail_authorized = 1, google_account_connected = 1, updated_at = datetime('now') WHERE user_id = ?`).run(req.user.id);
+  }
   res.json({
     configured: gmail.isConfigured(),
     connected: !!conn,
@@ -68,6 +71,7 @@ router.get('/oauth/callback', async (req, res) => {
       expiresAt: gmail.expiresAtString(tokens.expires_in),
       cfg,
     });
+    db.prepare(`UPDATE recruiter_profiles SET gmail_authorized = 1, google_account_connected = 1, updated_at = datetime('now') WHERE user_id = ?`).run(state.uid);
     res.redirect(`${returnTo}?gmail=connected`);
   } catch (e) {
     res.redirect(`${returnTo}?gmail=error`);
@@ -77,6 +81,7 @@ router.get('/oauth/callback', async (req, res) => {
 // Disconnect the recruiter's Gmail account.
 router.post('/disconnect', (req, res) => {
   gmail.deleteConnection(req.user.id);
+  db.prepare(`UPDATE recruiter_profiles SET gmail_authorized = 0, updated_at = datetime('now') WHERE user_id = ?`).run(req.user.id);
   res.json({ connected: false });
 });
 

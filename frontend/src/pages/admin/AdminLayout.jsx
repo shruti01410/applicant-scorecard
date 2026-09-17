@@ -1,7 +1,9 @@
-import React, { useEffect } from 'react';
-import { Layout, Button, Tag, Typography, message } from 'antd';
+import React, { useEffect, useState } from 'react';
+import { Layout, Button, Tag, message, Popover, Spin } from 'antd';
+import { GoogleOutlined, MailOutlined, DisconnectOutlined } from '@ant-design/icons';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../services/AuthContext';
+import { api } from '../../services/api';
 
 const { Header, Content } = Layout;
 
@@ -9,6 +11,8 @@ export default function AdminLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [acct, setAcct] = useState(null);
+  const [acctLoading, setAcctLoading] = useState(false);
   const fullBleed = location.pathname === '/' || /^\/scores\/[^/]+$/.test(location.pathname);
 
   useEffect(() => {
@@ -28,6 +32,84 @@ export default function AdminLayout() {
     navigate('/login');
   }
 
+  async function loadAccount() {
+    setAcctLoading(true);
+    try {
+      const d = await api.get('/api/admin/recruiter/profile');
+      setAcct(d);
+    } catch (e) {
+      setAcct(null);
+    } finally {
+      setAcctLoading(false);
+    }
+  }
+
+  async function handleConnect() {
+    try {
+      const r = await api.get(`/api/admin/gmail/connect?return_to=${encodeURIComponent(window.location.pathname)}`);
+      window.location.assign(r.authUrl);
+    } catch (e) {
+      message.error(e.message);
+    }
+  }
+
+  async function handleDisconnect() {
+    try {
+      await api.post('/api/admin/gmail/disconnect');
+      setAcct((a) => (a ? { ...a, gmail: { ...a.gmail, connected: false, account: null } } : a));
+      message.success('Gmail disconnected');
+    } catch (e) {
+      message.error(e.message);
+    }
+  }
+
+  const gmail = acct && acct.gmail;
+
+  const accountContent = (
+    <div style={{ width: 260 }}>
+      {acctLoading ? <Spin size="small" /> : (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            {acct && acct.google && acct.google.photo_url && (
+              <img src={acct.google.photo_url} alt="" style={{ width: 34, height: 34, borderRadius: '50%' }} />
+            )}
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700, color: '#1e293b', fontSize: 13 }}>{user && user.name}</div>
+              <div style={{ fontSize: 12, color: '#64748b' }}>{user && user.email}</div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+            <Tag color={user && (user.login_method === 'google' || (acct && acct.google)) ? 'blue' : 'default'} style={{ margin: 0 }}>
+              {user && (user.login_method === 'google' || (acct && acct.google)) ? <><GoogleOutlined /> Google account</> : 'Password sign-in'}
+            </Tag>
+          </div>
+          <DividerDot />
+          <div style={{ fontSize: 12, color: '#475569', marginBottom: 8 }}>
+            Gmail draft access
+          </div>
+          {gmail && (
+            <div style={{ marginBottom: 10 }}>
+              {gmail.connected ? (
+                <div style={{ fontSize: 12, color: '#16a34a', marginBottom: 8 }}>
+                  <MailOutlined /> {gmail.account}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>
+                  Not connected — drafts can't be saved to Gmail yet.
+                </div>
+              )}
+              {gmail.connected ? (
+                <Button size="small" icon={<DisconnectOutlined />} onClick={handleDisconnect}>Disconnect Gmail</Button>
+              ) : (
+                <Button size="small" type="primary" icon={<MailOutlined />} onClick={handleConnect}>Connect Gmail</Button>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+
   return (
     <Layout style={{ minHeight: '100vh', background: '#f1f5f9' }}>
       <Header className="navbar">
@@ -41,7 +123,9 @@ export default function AdminLayout() {
             <Link to="/insights" className="nav-link">Insights</Link>
           </div>
           <div className="nav-right" style={{ alignItems:'center', gap:8 }}>
-            <span style={{ color:'#fff', fontWeight:600, fontSize:13 }}>Shruti</span>
+            <Popover content={accountContent} title="Account" trigger="click" placement="bottomRight" arrow={false}>
+              <span style={{ color:'#fff', fontWeight:600, fontSize:13, cursor:'pointer' }} onMouseEnter={loadAccount}>{user ? user.name : 'Account'}</span>
+            </Popover>
             <Tag className="badge badge-emp" style={{ margin:0 }}>Admin</Tag>
             <button className="btn-logout" onClick={handleLogout}>Logout</button>
           </div>
@@ -52,4 +136,8 @@ export default function AdminLayout() {
       </Content>
     </Layout>
   );
+}
+
+function DividerDot() {
+  return <div style={{ borderTop: '1px solid #e2e8f0', margin: '0 0 10px' }} />;
 }

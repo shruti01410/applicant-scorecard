@@ -95,6 +95,19 @@ db.exec(`
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS recruiter_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    firebase_uid TEXT NOT NULL UNIQUE,
+    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT,
+    email TEXT NOT NULL,
+    photo_url TEXT,
+    google_account_connected INTEGER NOT NULL DEFAULT 0,
+    gmail_authorized INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS numerology_archetypes (
     number INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
