@@ -52,7 +52,7 @@ function mapDecision(row) {
 
 function getLatestDraft(candidateId) {
   return db.prepare(`
-    SELECT id, decision_id, subject, body, status, created_at
+    SELECT id, decision_id, recipient_email, subject, body, status, gmail_draft_id, created_at
     FROM candidate_emails
     WHERE candidate_id = ? AND status = 'draft'
     ORDER BY created_at DESC, id DESC
@@ -199,7 +199,11 @@ router.get('/decisions', (req, res) => {
 router.get('/employees/:id/decision', (req, res) => {
   const emp = getEmployee(req.params.id);
   if (!emp) return res.status(404).json({ error: 'Candidate not found' });
-  res.json({ decision: mapDecision(getLatestDecision(emp.id)), draft: getLatestDraft(emp.id) });
+  res.json({
+    email: emp.email || null,
+    decision: mapDecision(getLatestDecision(emp.id)),
+    draft: getLatestDraft(emp.id),
+  });
 });
 
 // Evidence-based rejection reason suggestions (recruiter must confirm).

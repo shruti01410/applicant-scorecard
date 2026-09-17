@@ -4,6 +4,7 @@ import {
 } from 'antd';
 import {
   CheckCircleOutlined, CloseCircleOutlined, CopyOutlined, MailOutlined, SaveOutlined,
+  GoogleOutlined, LinkOutlined,
 } from '@ant-design/icons';
 import { api } from '../services/api';
 
@@ -26,17 +27,33 @@ export function decisionTag(decision) {
 
 const DISCLAIMER = 'Reasons are limited to documented, job-related evidence (JD/resume capability match, recorded evaluation). Numerology and astrology are never used as a basis for hiring decisions.';
 
-export function DraftEmailModal({ open, draft, onClose, onSaved }) {
+export function DraftEmailModal({ open, draft, candidateEmail, onClose, onSaved }) {
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [saving, setSaving] = useState(false);
+  const [gmail, setGmail] = useState({ configured: false, connected: false, account: null, loading: false });
+  const [gmailSaving, setGmailSaving] = useState(false);
+  const [gmailSaved, setGmailSaved] = useState(null);
+
+  const to = (draft && String(draft.recipient_email || '').trim()) || candidateEmail || '';
+
+  async function loadGmailStatus() {
+    try {
+      const s = await api.get('/api/admin/gmail/status');
+      setGmail(s);
+    } catch (e) {
+      setGmail((g) => ({ ...g, loading: false }));
+    }
+  }
 
   useEffect(() => {
     if (open && draft) {
       setSubject(draft.subject || '');
       setBody(draft.body || '');
+      setGmailSaved(null);
+      loadGmailStatus();
     }
-  }, [open, draft]);
+  }, [open, draft, candidateEmail]);
 
   async function handleSave() {
     setSaving(true);
@@ -52,7 +69,7 @@ export function DraftEmailModal({ open, draft, onClose, onSaved }) {
   }
 
   async function handleCopy() {
-    const text = `Subject: ${subject}\n\n${body}`;
+    const text = `To: ${to || ''}\nSubject: ${subject}\n\n${body}`;
     try {
       await navigator.clipboard.writeText(text);
       message.success('Draft copied to clipboard');
@@ -61,12 +78,61 @@ export function DraftEmailModal({ open, draft, onClose, onSaved }) {
     }
   }
 
+  async function handleConnect() {
+    setGmail((g) => ({ ...g, loading: true }));
+    try {
+      const r = await api.get(`/api/admin/gmail/connect?return_to=${encodeURIComponent(window.location.pathname)}`);
+      window.location.assign(r.authUrl);
+    } catch (e) {
+      message.error(e.message);
+      setGmail((g) => ({ ...g, loading: false }));
+    }
+  }
+
+  async function handleSaveToGmail() {
+    if (!draft || !draft.id) return;
+    setGmailSaving(true);
+    try {
+      const r = await api.post(`/api/admin/gmail/email-drafts/${draft.id}/gmail`);
+      setGmailSaved(r);
+      message.success('Draft created in your Gmail');
+      if (onSaved) onSaved();
+    } catch (e) {
+      message.error(e.message);
+    } finally {
+      setGmailSaving(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    try {
+      await api.post('/api/admin/gmail/disconnect');
+      setGmail({ configured: gmail.configured, connected: false, account: null, loading: false });
+      setGmailSaved(null);
+      message.success('Gmail disconnected');
+    } catch (e) {
+      message.error(e.message);
+    }
+  }
+
+  function handleOpenGmail() {
+    const url = (gmailSaved && gmailSaved.gmail_draft_url)
+      || (draft && draft.gmail_draft_id ? `https://mail.google.com/mail/u/0/#inbox?compose=${draft.gmail_draft_id}` : null);
+    if (url) {
+      window.open(url, '_blank', 'noopener');
+    } else {
+      message.info('Draft created — open your Gmail inbox to find it');
+    }
+  }
+
+  const savedDraftId = (gmailSaved && gmailSaved.gmail_draft_id) || (draft && draft.gmail_draft_id);
+
   return (
     <Modal
       title={<span><MailOutlined /> Email Draft</span>}
       open={open}
       onCancel={onClose}
-      width={640}
+      width={680}
       destroyOnClose
       footer={[
         <Button key="copy" icon={<CopyOutlined />} onClick={handleCopy}>Copy</Button>,
@@ -76,8 +142,17 @@ export function DraftEmailModal({ open, draft, onClose, onSaved }) {
       {draft && (
         <>
           <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>
-            To: <b>{draft.recipient_email || '—'}</b>
+            To: <b>{to || '—'}</b>
           </div>
+          {!to && (
+            <Alert
+              style={{ marginBottom: 12 }}
+              type="error"
+              showIcon
+              message="Candidate email is unavailable"
+              description="Please add the candidate's email before creating the draft in Gmail."
+            />
+          )}
           <Input
             addonBefore="Subject"
             value={subject}
@@ -89,9 +164,74 @@ export function DraftEmailModal({ open, draft, onClose, onSaved }) {
             style={{ marginTop: 12 }}
             type="info"
             showIcon
-            message="Sending is disabled in this build"
-            description="This draft is for recruiter review. Copy it and send it from your email client. Automated sending will be enabled once an email provider is configured."
+            message="Sending is disabled — drafts are for recruiter review"
+            description="Nothing is sent automatically. Save the email as a real draft in your Gmail (below), then review and send it from Gmail yourself."
           />
+
+          <Divider style={{ margin: '16px 0 12px' }}>Save to Gmail</Divider>
+
+          {!gmail.configured && (
+            <Alert
+              type="warning"
+              showIcon
+              message="Gmail integration is not configured yet"
+              description="An administrator needs to connect this app to Google (GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET and the callback URL)."
+            />
+          )}
+
+          {gmail.configured && !gmail.connected && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <Button
+                icon={<GoogleOutlined />}
+                loading={gmail.loading}
+                onClick={handleConnect}
+                style={{ alignSelf: 'flex-start' }}
+              >
+                Connect Gmail
+              </Button>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Signs in to your Gmail to save drafts. Your credentials stay on the server — they are never
+                sent to your browser. Gmail scope: create drafts only (no sending).
+              </Text>
+            </div>
+          )}
+
+          {gmail.configured && gmail.connected && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <Tag color="blue" icon={<CheckCircleOutlined />} style={{ margin: 0 }}>
+                  Connected: {gmail.account}
+                </Tag>
+                {savedDraftId ? (
+                  <Button size="small" icon={<LinkOutlined />} onClick={handleOpenGmail}>Open Gmail Draft</Button>
+                ) : (
+                  <Button
+                    size="small"
+                    type="primary"
+                    icon={<MailOutlined />}
+                    loading={gmailSaving}
+                    disabled={!to}
+                    onClick={handleSaveToGmail}
+                  >
+                    Save to Gmail Draft
+                  </Button>
+                )}
+                <Button size="small" type="text" onClick={handleDisconnect} style={{ fontSize: 12 }}>
+                  Disconnect
+                </Button>
+              </div>
+              {!to && (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Add the candidate's email before you can save the draft to Gmail.
+                </Text>
+              )}
+              {savedDraftId && (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Draft saved to Gmail. Open it in Gmail to review, edit, and send — nothing is sent automatically.
+                </Text>
+              )}
+            </div>
+          )}
         </>
       )}
     </Modal>
@@ -222,7 +362,7 @@ export function RecordDecisionModal({ open, candidateId, initialDecision, onClos
   );
 }
 
-export function DecisionStatus({ candidateId, decision, draft, onChanged }) {
+export function DecisionStatus({ candidateId, decision, draft, candidateEmail, onChanged }) {
   const [recordOpen, setRecordOpen] = useState(false);
   const [initialDecision, setInitialDecision] = useState('approved');
   const [draftOpen, setDraftOpen] = useState(false);
@@ -256,6 +396,7 @@ export function DecisionStatus({ candidateId, decision, draft, onChanged }) {
       <DraftEmailModal
         open={draftOpen}
         draft={draft}
+        candidateEmail={candidateEmail}
         onClose={() => setDraftOpen(false)}
         onSaved={() => { if (onChanged) onChanged(); }}
       />

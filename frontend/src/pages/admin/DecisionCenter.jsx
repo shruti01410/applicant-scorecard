@@ -15,6 +15,7 @@ export default function DecisionCenter() {
   const [filter, setFilter] = useState('all');
   const [details, setDetails] = useState(null);
   const [draft, setDraft] = useState(null);
+  const [draftEmail, setDraftEmail] = useState(null);
   const [draftOpen, setDraftOpen] = useState(false);
 
   async function fetchData() {
@@ -111,7 +112,7 @@ export default function DecisionCenter() {
                   )}
                   <Button size="small" icon={<LinkOutlined />} onClick={() => setDetails(c)}>View Details</Button>
                   {c.draft && (
-                    <Button size="small" icon={<MailOutlined />} onClick={() => { setDraft(c.draft); setDraftOpen(true); }}>Draft Email</Button>
+                    <Button size="small" icon={<MailOutlined />} onClick={() => { setDraft(c.draft); setDraftEmail(c.email); setDraftOpen(true); }}>Draft Email</Button>
                   )}
                 </div>
               </div>
@@ -167,7 +168,7 @@ export default function DecisionCenter() {
               </div>
             )}
             <div style={{ marginTop: 16 }}>
-              <Button type="primary" icon={<MailOutlined />} onClick={() => { setDraft(details.draft); setDraftOpen(true); }}>View / Edit Email Draft</Button>
+              <Button type="primary" icon={<MailOutlined />} onClick={() => { setDraft(details.draft); setDraftEmail(details.email); setDraftOpen(true); }}>View / Edit Email Draft</Button>
             </div>
           </div>
         )}
@@ -176,6 +177,7 @@ export default function DecisionCenter() {
       <DraftEmailModal
         open={draftOpen}
         draft={draft}
+        candidateEmail={draftEmail}
         onClose={() => setDraftOpen(false)}
         onSaved={fetchData}
       />

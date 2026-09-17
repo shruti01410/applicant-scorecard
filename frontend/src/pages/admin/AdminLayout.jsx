@@ -1,5 +1,5 @@
-import React from 'react';
-import { Layout, Button, Tag, Typography } from 'antd';
+import React, { useEffect } from 'react';
+import { Layout, Button, Tag, Typography, message } from 'antd';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../services/AuthContext';
 
@@ -10,6 +10,18 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const fullBleed = location.pathname === '/' || /^\/scores\/[^/]+$/.test(location.pathname);
+
+  useEffect(() => {
+    const gmail = new URLSearchParams(location.search).get('gmail');
+    if (!gmail) return;
+    if (gmail === 'connected') message.success('Gmail connected — you can now save email drafts to Gmail.');
+    else if (gmail === 'denied') message.warning('Gmail connection was cancelled.');
+    else if (gmail === 'invalid_state') message.error('Gmail connection could not be verified. Please try again.');
+    else if (gmail === 'error') message.error('Gmail connection failed. Please try again.');
+    const url = new URL(window.location.href);
+    url.searchParams.delete('gmail');
+    window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+  }, [location]);
 
   function handleLogout() {
     logout();

@@ -28,7 +28,8 @@ function seededDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       candidate_id INTEGER NOT NULL, decision_id INTEGER, recipient_email TEXT NOT NULL,
       subject TEXT NOT NULL, body TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft',
-      reviewed_by INTEGER, reviewed_at DATETIME, sent_at DATETIME, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      reviewed_by INTEGER, reviewed_at DATETIME, sent_at DATETIME, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      gmail_draft_id TEXT, gmail_account_id INTEGER, updated_at DATETIME
     );
     INSERT INTO users (username, password, role, name, email, job_description_id, resume_text, capability_match_detail)
     VALUES ('test123', 'x', 'admin', 'Risha Sinha', 'risha@scorecard.com', NULL, NULL, NULL);

@@ -83,6 +83,18 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS gmail_connections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    account_email TEXT NOT NULL,
+    access_token TEXT NOT NULL,
+    refresh_token TEXT,
+    scopes TEXT NOT NULL DEFAULT '',
+    expires_at TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS numerology_archetypes (
     number INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
@@ -290,6 +302,13 @@ try {
 try {
   const suCols = db.prepare(`PRAGMA table_info(scorecard_updates)`).all().map(r => r.name);
   if (!suCols.includes('source')) db.exec(`ALTER TABLE scorecard_updates ADD COLUMN source TEXT DEFAULT 'manual'`);
+} catch (e) {}
+
+try {
+  const emCols = db.prepare(`PRAGMA table_info(candidate_emails)`).all().map(r => r.name);
+  if (!emCols.includes('gmail_draft_id')) db.exec(`ALTER TABLE candidate_emails ADD COLUMN gmail_draft_id TEXT`);
+  if (!emCols.includes('gmail_account_id')) db.exec(`ALTER TABLE candidate_emails ADD COLUMN gmail_account_id INTEGER`);
+  if (!emCols.includes('updated_at')) db.exec(`ALTER TABLE candidate_emails ADD COLUMN updated_at DATETIME`);
 } catch (e) {}
 
 try {

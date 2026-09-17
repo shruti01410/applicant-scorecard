@@ -244,6 +244,7 @@ export default function ScorePage() {
               candidateId={id}
               decision={decisionInfo && decisionInfo.decision}
               draft={decisionInfo && decisionInfo.draft}
+              candidateEmail={decisionInfo && decisionInfo.email}
               onChanged={fetchDecision}
             />
           </div>
