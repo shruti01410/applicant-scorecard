@@ -321,7 +321,7 @@ router.get('/employees/:id/numerology/numo-params', (req, res) => {
     }
     if (!company) company = db.prepare('SELECT * FROM company_numerology_profiles ORDER BY id LIMIT 1').get();
   }
-  const params = numer.computeNumoParameters(profile, company);
+  const params = numer.computeNumoParameters(profile, company, emp.name);
   res.json({ params, company_id: company ? company.id : null });
 });
 

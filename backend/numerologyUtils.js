@@ -172,12 +172,12 @@ const NUMO_PARAMETERS = [
   { key: 'stillness', name: 'Stillness in Company', number: 7, keyword: 'Analyst', desc: 'How naturally calm and grounded the person feels inside the team — does their presence steady the room?', human: 'A 7-like calm steadies meetings; a 5-like buzz brings movement. Neither is better — it’s about what the team needs this year.' },
   { key: 'luck', name: 'Luck & Fortune Flow', number: 8, keyword: 'Achiever', desc: 'How easily opportunities and timing seem to line up — the “wind at your back” feeling.', human: 'An 8 year often feels lucky with results and recognition; a 4 year feels lucky through steady building.' },
   { key: 'harmony', name: 'Harmony with Company Core', number: 2, keyword: 'Partner', desc: 'How smoothly personal rhythm blends with the company’s fixed Founded Number — the daily “we just get each other” factor.', human: 'Think ensemble vs solo — 2 and 6 harmonize quickly, 1 and 5 need more negotiation.' },
-  { key: 'destiny', name: 'Destiny Momentum', number: 1, keyword: 'Initiator', desc: 'Whether Life Path energy is pushing toward fresh starts and momentum that matches the role’s growth track.', human: 'A 1-forward year wants to start things; a 9-forward year wants to complete them.' },
+  { key: 'destiny', name: 'Destiny Momentum', number: 1, keyword: 'Initiator', desc: 'A symbolic comparison of the name-based Expression number with the company Founded Number, or Life Path when no company is set.', human: 'Smaller number differences score higher, with a master-number adjustment for 11/22/33. Reflection, not a prediction or a hiring signal.' },
   { key: 'karmic', name: 'Karmic Balance', number: 6, keyword: 'Anchor', desc: 'Sense of responsibility and steadiness — do they naturally carry weight for others and keep promises?', human: '6 carries the “show-up-for-others” energy; 3 and 5 feel lighter and more expressive.' },
   { key: 'intuition', name: 'Intuitive Clarity', number: 11, keyword: 'Seer', desc: 'How often gut feeling lines up with good calls — kept as master 11 when Life/Birth is 11/22.', human: '11 is the classic “seer” signal — vision that needs grounding to be useful.' },
 ];
 
-function computeNumoParameters(profile, company) {
+function computeNumoParameters(profile, company, candidateName = '') {
   if (!profile || !profile.life_path_number) return NUMO_PARAMETERS.map(p => ({ ...p, score: 3, basis: 'Need DOB to personalize — showing neutral 3/5.', resonance: 'Neutral', outcome: 'Neutral', tone: 'neutral', diff: null }));
   const lifePath = profile.life_path_number;
   const birth = profile.birth_number;
@@ -185,9 +185,11 @@ function computeNumoParameters(profile, company) {
   const normBirth = birth > 9 ? reduceDigits(birth, { keepMaster: false }) : birth;
   const personalYear = profile.date_of_birth ? personalYearNumber(profile.date_of_birth, new Date().getFullYear()) : null;
   const companyNum = company && company.founded_number != null ? company.founded_number : (company && company.founded_year ? foundedNumber(company.founded_year) : null);
-  const composite = compositePersonalNumber(lifePath, birth, profile.expression_number != null ? profile.expression_number : nameNumber(profile.full_name || '', { keepMaster: true }));
+  const validExpression = value => Number.isInteger(value) && ((value >= 1 && value <= 9) || MASTER_NUMBERS.has(value));
+  const nameExpression = nameNumber(profile.numerology_name || profile.full_name || candidateName, { keepMaster: true });
+  const expr = validExpression(profile.expression_number) ? profile.expression_number : (validExpression(nameExpression) ? nameExpression : null);
+  const composite = compositePersonalNumber(lifePath, birth, expr);
   const normComposite = composite > 9 ? reduceDigits(composite, { keepMaster: false }) : composite;
-  const expr = profile.expression_number != null ? profile.expression_number : nameNumber(profile.full_name || '', { keepMaster: true });
   const normExpr = expr > 9 ? reduceDigits(expr, { keepMaster: false }) : expr;
   return NUMO_PARAMETERS.map(p => {
     let targetNum = p.number;
@@ -252,6 +254,7 @@ function computeNumoParameters(profile, company) {
       diffForOutcome = diffHarmony;
       reasons.push(companyNum != null ? `Composite ${composite} vs Company ${companyNum} (Δ${diffHarmony}) — same as Trajectory Alignment` : 'No company number yet');
     } else if (p.key === 'destiny') {
+      if (expr == null) return { ...p, score: 3, basis: 'Name-based Expression number unavailable — showing neutral 3/5, not a calculated score.', resonance: 'Neutral', outcome: 'Neutral', tone: 'neutral', diff: null };
       // Destiny = how well expression energy aligns with company direction
       const rawExpr = expr;
       const isMasterExpr = rawExpr === 11 || rawExpr === 22 || rawExpr === 33;

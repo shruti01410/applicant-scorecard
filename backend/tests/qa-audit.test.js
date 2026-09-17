@@ -772,4 +772,86 @@ test('F6. duplicate JD in Add Candidate flow: second upload returns existing id'
   assert.equal(second.jd.id, insert.id, 'should reuse existing JD id');
 });
 
+test('Destiny Momentum recovers missing expression from the candidate name', () => {
+  const { computeNumoParameters } = require('../numerologyUtils');
+  const profile = { life_path_number: 3, birth_number: 1, date_of_birth: '1990-01-01' };
+  const destiny = computeNumoParameters(profile, { founded_number: 3 }, 'Alice').find(p => p.key === 'destiny');
+  assert.equal(destiny.score, 5);
+  assert.match(destiny.basis, /Expression 3 .* Company 3/);
+  for (const expression_number of [null, 0, -1, 10]) {
+    const result = computeNumoParameters({ ...profile, expression_number, numerology_name: 'Alice', full_name: 'Bob' }, { founded_number: 3 }).find(p => p.key === 'destiny');
+    assert.equal(result.score, 5);
+  }
+  const missing = computeNumoParameters(profile, { founded_number: 3 }).find(p => p.key === 'destiny');
+  assert.equal(missing.score, 3);
+  assert.equal(missing.diff, null);
+  assert.match(missing.basis, /unavailable/);
+});
+
+test('Destiny Momentum varies by expression and preserves the existing formula', () => {
+  const { computeNumoParameters } = require('../numerologyUtils');
+  const profile = { life_path_number: 3, birth_number: 1, date_of_birth: '1990-01-01' };
+  for (const [expression_number, score] of [[1, 3], [2, 4], [3, 5], [4, 4], [5, 3], [6, 2], [7, 2], [8, 2], [9, 2], [11, 5], [22, 5], [33, 4]]) {
+    const result = computeNumoParameters({ ...profile, expression_number }, { founded_number: 3 }).find(p => p.key === 'destiny');
+    assert.equal(result.score, score, `Expression ${expression_number}`);
+  }
+  const fallback = computeNumoParameters(profile, null, 'Alice').find(p => p.key === 'destiny');
+  assert.equal(fallback.score, 4);
+  assert.match(fallback.basis, /Life Path 3/);
+});
+
+test('Deep parameters endpoint uses the user name for a legacy profile', async () => {
+  const express = require('express');
+  const db = new DatabaseSync(':memory:');
+  db.exec(`
+    CREATE TABLE users (id INTEGER, name TEXT, email TEXT, role TEXT, date_of_birth TEXT, company_id INTEGER, job_description_id INTEGER);
+    CREATE TABLE numerology_profiles (employee_id INTEGER, dimension TEXT, date_of_birth TEXT, life_path_number INTEGER, birth_number INTEGER, expression_number INTEGER, full_name TEXT, numerology_name TEXT);
+    CREATE TABLE company_numerology_profiles (id INTEGER, founded_number INTEGER);
+    INSERT INTO users VALUES (1, 'Alice', '', 'employee', '1990-01-01', 1, NULL);
+    INSERT INTO numerology_profiles VALUES (1, 'candidate', '1990-01-01', 3, 1, NULL, NULL, NULL);
+    INSERT INTO company_numerology_profiles VALUES (1, 3);
+  `);
+  const paths = ['./database', './middleware/auth', './routes/numerology'].map(p => require.resolve(`../${p.slice(2)}`));
+  const cached = paths.map(p => require.cache[p]);
+  const enabled = process.env.ENABLE_INNER_INTELLIGENCE;
+  let server;
+  try {
+    require.cache[paths[0]] = { exports: db };
+    require.cache[paths[1]] = { exports: { authenticate: (req, res, next) => next(), requireRole: () => (req, res, next) => next() } };
+    delete require.cache[paths[2]];
+    process.env.ENABLE_INNER_INTELLIGENCE = 'true';
+    const app = express();
+    app.use('/api/admin', require('../routes/numerology'));
+    server = await new Promise(resolve => {
+      const instance = app.listen(0, '127.0.0.1', () => resolve(instance));
+    });
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/admin/employees/1/numerology/numo-params`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    const destiny = body.params.find(p => p.key === 'destiny');
+    assert.equal(destiny.score, 5);
+    assert.match(destiny.basis, /Expression 3 .* Company 3/);
+    assert.equal(db.prepare('SELECT expression_number FROM numerology_profiles').get().expression_number, null);
+  } finally {
+    if (server) await new Promise(resolve => server.close(resolve));
+    db.close();
+    paths.forEach((p, i) => {
+      if (cached[i]) require.cache[p] = cached[i];
+      else delete require.cache[p];
+    });
+    if (enabled === undefined) delete process.env.ENABLE_INNER_INTELLIGENCE;
+    else process.env.ENABLE_INNER_INTELLIGENCE = enabled;
+  }
+});
+
+test('resume integrity analyzer terminates on claims text (regression: infinite regex loop)', () => {
+  const { analyzeResume } = require('../resumeIntegrityAnalyzer');
+  const text = 'Data scientist with 6+ years doing Python, SQL and ML. Managed and delivered projects.';
+  const started = Date.now();
+  const result = analyzeResume(text);
+  const elapsed = Date.now() - started;
+  assert.ok(elapsed < 3000, `analyzeResume took ${elapsed}ms — likely infinite loop`);
+  assert.ok(Array.isArray(result.detectedFlags));
+});
+
 

@@ -111,7 +111,7 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
     const tri = triNature.hasProfile ? triNature : null;
 
     const company = db.prepare('SELECT * FROM company_numerology_profiles ORDER BY id LIMIT 1').get();
-    const numoParams = profile ? computeNumoParameters(profile, company) : [];
+    const numoParams = profile ? computeNumoParameters(profile, company, emp.name) : [];
 
     const scores = db.prepare(`
       SELECT s.score, p.name as parameter_name, p.weightage

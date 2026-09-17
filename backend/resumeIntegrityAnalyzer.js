@@ -157,11 +157,11 @@ const EMPLOYER_KEYWORDS = ['pvt', 'ltd', 'inc', 'llc', 'corp', 'technolog', 'ser
 const VAGUE_EMPLOYER_PATTERNS = ['a leading company', 'a reputed organization', 'a top firm', 'a well-known company', 'major corporation', 'well-established company', 'prominent company', 'leading organization', 'a leading firm', 'a知名 company'];
 
 const STRONG_CLAIM_PATTERNS = [
-  /\bexpert\b/i, /\bmaster\b/i, /\bworld-class\b/i, /\bleading expert\b/i,
-  /\bled\b/i, /\barchitected\b/i, /\bdesigned and built\b/i, /\bowned\b/i,
-  /\bmanaged\b/i, /\bdelivered\b/i, /\bgenerated\b/i, /\bincreased\b/i,
-  /\breduced\b/i, /\bsaved\b/i, /\boptimized\b/i, /\btransformed\b/i,
-  /\b(\d+)\+?\s*years\b/i, /\bresponsible for\b/i,
+  /\bexpert\b/gi, /\bmaster\b/gi, /\bworld-class\b/gi, /\bleading expert\b/gi,
+  /\bled\b/gi, /\barchitected\b/gi, /\bdesigned and built\b/gi, /\bowned\b/gi,
+  /\bmanaged\b/gi, /\bdelivered\b/gi, /\bgenerated\b/gi, /\bincreased\b/gi,
+  /\breduced\b/gi, /\bsaved\b/gi, /\boptimized\b/gi, /\btransformed\b/gi,
+  /\b(\d+)\+?\s*years\b/gi, /\bresponsible for\b/gi,
 ];
 
 function extractEntities(sections) {
@@ -792,23 +792,23 @@ function rule7_UnsupportedClaims(text, sections, entities, timeline) {
   const evidenceText = (expText + ' ' + projText + ' ' + awdText + ' ' + certText).toLowerCase();
 
   const strongClaims = [
-    { pattern: /\bled\b/i, context: 'leadership' },
-    { pattern: /\barchitected\b/i, context: 'architecture' },
-    { pattern: /\bmanaged\b.*\bteam\b/i, context: 'team management' },
-    { pattern: /\b(\d+)\+?\s*projects?\b/i, context: 'project count' },
-    { pattern: /\bgenerated\b.*\b(\d+%|revenue|growth)\b/i, context: 'revenue/growth' },
-    { pattern: /\bincreased\b.*\b(\d+%|efficiency|performance)\b/i, context: 'performance improvement' },
-    { pattern: /\breduced\b.*\b(\d+%|cost|time|effort)\b/i, context: 'cost/time reduction' },
-    { pattern: /\boptimized\b/i, context: 'optimization' },
-    { pattern: /\btransformed\b/i, context: 'transformation' },
-    { pattern: /\bexpert\b/i, context: 'expertise' },
+    { pattern: /\bled\b/gi, context: 'leadership' },
+    { pattern: /\barchitected\b/gi, context: 'architecture' },
+    { pattern: /\bmanaged\b.*\bteam\b/gi, context: 'team management' },
+    { pattern: /\b(\d+)\+?\s*projects?\b/gi, context: 'project count' },
+    { pattern: /\bgenerated\b.*\b(\d+%|revenue|growth)\b/gi, context: 'revenue/growth' },
+    { pattern: /\bincreased\b.*\b(\d+%|efficiency|performance)\b/gi, context: 'performance improvement' },
+    { pattern: /\breduced\b.*\b(\d+%|cost|time|effort)\b/gi, context: 'cost/time reduction' },
+    { pattern: /\boptimized\b/gi, context: 'optimization' },
+    { pattern: /\btransformed\b/gi, context: 'transformation' },
+    { pattern: /\bexpert\b/gi, context: 'expertise' },
   ];
 
   let unsupportedCount = 0;
   const unsupportedExamples = [];
 
   for (const { pattern, context } of strongClaims) {
-    const allMatches = [...allText.matchAll(new RegExp(pattern.source, pattern.flags))];
+    const allMatches = [...text.matchAll(new RegExp(pattern.source, pattern.flags))];
     if (allMatches.length > 0) {
       // Check if there's supporting evidence in experience/projects
       const claimText = allMatches[0][0].toLowerCase();

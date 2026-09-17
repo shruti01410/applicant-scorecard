@@ -770,6 +770,7 @@ function CardDetail({ card }) {
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600, color: "#1c2333" }}>{d.name}</div>
                   <div style={{ fontSize: 11, color: "#a2a9bd" }}>{d.score}/5</div>
+                  {d.basis && <div style={{ fontSize: 11, color: "#5c6580", marginTop: 4 }}>{d.basis}</div>}
                 </div>
                 <div style={{
                   fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 99,
@@ -1092,6 +1093,7 @@ export default function ExactInnerIntelligence({ employeeId }) {
         name: p.name,
         score: Math.round(p.score || 0),
         outcome: p.outcome || "Neutral",
+        basis: p.basis,
       })));
 
       const conc = (o && o.conclusion) || null;

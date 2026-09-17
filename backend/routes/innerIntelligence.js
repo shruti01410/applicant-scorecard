@@ -29,7 +29,8 @@ function getDeepParams(employeeId) {
   ).get(employeeId, 'candidate');
   if (!profile || !profile.life_path_number) return null;
   const company = resolveCompany(employeeId);
-  return numer.computeNumoParameters(profile, company);
+  const emp = db.prepare('SELECT name FROM users WHERE id = ?').get(employeeId);
+  return numer.computeNumoParameters(profile, company, emp ? emp.name : '');
 }
 
 function getTriNature(employeeId) {
