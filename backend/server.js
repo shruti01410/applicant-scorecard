@@ -46,6 +46,7 @@ app.use((req, res, next) => {
 });
 
 app.use('/api/auth',     require('./routes/auth'));
+app.use('/api/auth/mfa', require('./routes/mfa'));
 // Gmail OAuth callback must be reachable BEFORE the /api/admin routers below run
 // their JWT middleware: Google's redirect carries no Authorization header.
 app.use('/api/admin/gmail', require('./routes/gmail'));

@@ -382,6 +382,8 @@ try {
   if (!uCols.includes('status')) db.exec(`ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'active' CHECK(status IN ('active', 'suspended'))`);
   if (!uCols.includes('auth_provider')) db.exec(`ALTER TABLE users ADD COLUMN auth_provider TEXT DEFAULT 'local'`);
   if (!uCols.includes('last_login_at')) db.exec(`ALTER TABLE users ADD COLUMN last_login_at DATETIME`);
+  if (!uCols.includes('mfa_enabled')) db.exec(`ALTER TABLE users ADD COLUMN mfa_enabled INTEGER NOT NULL DEFAULT 0`);
+  if (!uCols.includes('mfa_secret')) db.exec(`ALTER TABLE users ADD COLUMN mfa_secret TEXT`);
   // seed the default organization (single-tenant HUMSEE) and backfill existing
   // users so every record carries an organization_id from now on.
   db.prepare(`INSERT OR IGNORE INTO organizations (name, slug) VALUES ('HUMSEE', 'humsee')`).run();

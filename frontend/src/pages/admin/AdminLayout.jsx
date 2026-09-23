@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Layout, Button, Tag, message, Popover, Spin } from 'antd';
-import { GoogleOutlined, MailOutlined, DisconnectOutlined } from '@ant-design/icons';
+import { GoogleOutlined, MailOutlined, DisconnectOutlined, TeamOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../services/AuthContext';
 import { api } from '../../services/api';
+import MfaPanel from '../../components/MfaPanel';
 
 const { Header, Content } = Layout;
 
@@ -105,6 +106,12 @@ export default function AdminLayout() {
               )}
             </div>
           )}
+          <DividerDot />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <SafetyCertificateOutlined style={{ color: '#475569' }} />
+            <span style={{ fontSize: 12, color: '#475569' }}>Security</span>
+          </div>
+          <MfaPanel />
         </>
       )}
     </div>
@@ -121,6 +128,7 @@ export default function AdminLayout() {
             <Link to="/job-descriptions" className="nav-link">JDs</Link>
             <Link to="/decision-center" className="nav-link">Decisions</Link>
             <Link to="/insights" className="nav-link">Insights</Link>
+            <Link to="/users" className="nav-link">Users</Link>
           </div>
           <div className="nav-right" style={{ alignItems:'center', gap:8 }}>
             <Popover content={accountContent} title="Account" trigger="click" placement="bottomRight" arrow={false}>

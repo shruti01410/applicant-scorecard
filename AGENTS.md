@@ -33,12 +33,16 @@ backend/
   numerologyUtils.js     Pure numerology math + PERSONAL_YEAR_THEMES map (no DB access)
   tests/                 jdValidation.test.js — 12-case JD validation/dedupe suite (`npm test`)
   routes/
-    auth.js              POST /login -> { token, user }
+    auth.js              POST /login -> { token, user } | { mfa_required, mfa_token }; POST /mfa/login -> full token
+    mfa.js               TOTP MFA self-service: setup / verify / disable / status (JWT-authed)
     admin.js             parameters, employees, employees/:id/scorecard, upload-excel (role=admin)
+    adminPanel.js        /api/admin/panel — analytics, users (role/suspend), roles, audit, health
     numerology.js        Inner Intelligence endpoints (gated + admin-only)
     approvals.js         Panel-based approval workflow (Admin Approval & Decision)
     employee.js          GET /scorecard -> current employee's own scorecard (read-only)
-  middleware/auth.js     authenticate (JWT verify) and requireRole(role)
+  mfa.js                 Pure-crypto TOTP (RFC 6238): generateSecret, totp, verify, otpauthURI
+  db/driver.js           DB driver abstraction — SQLite (node:sqlite) default; PG via DB_DRIVER=postgres + DATABASE_URL
+  middleware/auth.js     authenticate (JWT verify), requireRole(role), requirePermission(perm)
   scorecard.db           SQLite file (created and seeded automatically on first run)
 
 frontend/
@@ -47,16 +51,18 @@ frontend/
     App.jsx              Role-based router (admin vs employee branch) + AntD ConfigProvider
     scoreLabels.js       badge() thresholds -> label + color
     services/api.js      fetch wrapper (Authorization header, FormData support); BASE_URL from env
-    services/AuthContext.jsx  JWT + user in localStorage ('token', 'user'); token expiry check
+    services/AuthContext.jsx  JWT + user in localStorage ('token', 'user'); token expiry check; loginWithMfa()
     components/
+      MfaPanel.jsx       Account popover MFA setup/verify/disable UI
       ApprovalPanelSection.jsx  Approval & Decision card (panel workflows) on the scorecard page
     pages/
-      LoginPage.jsx
+      LoginPage.jsx      Password form + MFA code step (when mfa_required)
       admin/
-        AdminLayout.jsx  top navbar (Home, Scores, user, Logout)
+        AdminLayout.jsx  top navbar (Home, Scores, JDs, Decisions, Insights, Users)
         AdminHome.jsx    marketing landing (hero, stats, features, pricing)
         ScoresPage.jsx   employee scorecard list, search, Excel import, Add Candidate
         ScorePage.jsx    per-employee 16-param SOP score form (0-100 + N/A, DEAL factors, Pursuit Priority card)
+        UsersPage.jsx    role dropdown + suspend/reactivate per user (admin panel API)
       employee/
         MyScorecard.jsx  read-only view (badge %, info cards, parameter breakdown)
     styles/app.css
@@ -210,7 +216,12 @@ with `npm run build` in `frontend/`; backend behavior is verified by starting th
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
-| POST | `/api/auth/login` | none | Login -> `{token, user}` |
+| POST | `/api/auth/login` | none | Login -> `{token, user}` or `{mfa_required, mfa_token}` when MFA is on |
+| POST | `/api/auth/mfa/login` | none (mfa_token) | Exchange mfa_token + 6-digit TOTP for a full session token |
+| POST | `/api/auth/mfa/setup` | JWT | Generate pending TOTP secret + otpauth URL |
+| POST | `/api/auth/mfa/verify` | JWT | Confirm first code → activate MFA |
+| POST | `/api/auth/mfa/disable` | JWT | password + code → turn MFA off |
+| GET | `/api/auth/mfa/status` | JWT | `{ mfa_enabled }` for the account UI |
 | GET | `/api/admin/parameters` | admin | Active SOP parameters (16: PERSON/ROLE/DEAL, `status`/`grp` fields) |
 | GET | `/api/admin/employees?search=` | admin | List candidates + summary (`pursuit_priority`, `candidate_fit`, `joining_probability`, `confidence_score`, group scores, `final_decision`, `base_band`) |
 | POST | `/api/admin/employees` | admin | Add a candidate `{name, email, date_of_birth}` (DOB required, YYYY-MM-DD); auto-rates the 16 SOP params when JD+resume supplied |
@@ -220,6 +231,16 @@ with `npm run build` in `frontend/`; backend behavior is verified by starting th
 | POST | `/api/admin/employees/:id/auto-rate` | admin | Auto-rate the 16 SOP PERSON/ROLE params from JD+resume (0-100, editable) |
 | POST | `/api/admin/upload-excel` | admin | Bulk import candidates (multipart `file`, .xlsx/.xls) |
 | GET | `/api/employee/scorecard` | employee | Current employee's own scorecard (read-only, incl. decision) |
+
+Admin panel (`/api/admin/panel`, admin + `requirePermission` on mutations):
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/users?search=&role=&status=` | List users with logins/activity counts |
+| PATCH | `/users/:id/role` | Change role (`users.manage`) |
+| PATCH | `/users/:id/suspend` | Suspend / reactivate (`users.manage`) |
+| GET | `/roles`, PUT `/roles/:role/permissions` | Permission matrix (`roles.manage`) |
+| GET | `/audit-logs?action=&module=` | Unified audit trail |
 
 Behavioral Reflection (was Inner Intelligence; all admin-only and gated by `ENABLE_INNER_INTELLIGENCE=true` — 404 when off):
 

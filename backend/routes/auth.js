@@ -22,6 +22,16 @@ function signToken(user) {
   );
 }
 
+// Short-lived token issued after password OK when MFA is enabled — the full
+// session token is only minted after the TOTP code verifies.
+function signMfaToken(user) {
+  return jwt.sign(
+    { id: user.id, username: user.username, role: user.role, mfa_pending: true },
+    JWT_SECRET,
+    { expiresIn: '5m' }
+  );
+}
+
 function touchLastLogin(userId) {
   try {
     db.prepare('UPDATE users SET last_login_at = datetime(\'now\') WHERE id = ?').run(userId);
@@ -63,6 +73,12 @@ router.post('/login', loginLimiter, (req, res) => {
     return res.status(403).json({ error: 'This account has been suspended. Contact an administrator.' });
   }
 
+  // MFA: password alone is not enough — return a short-lived pending token.
+  if (user.mfa_enabled) {
+    logAudit({ performedBy: user.id, action: 'login_mfa_required', targetType: 'user', targetId: user.id, req });
+    return res.json({ mfa_required: true, mfa_token: signMfaToken(user) });
+  }
+
   touchLastLogin(user.id);
   logAudit({ performedBy: user.id, action: 'login', targetType: 'user', targetId: user.id, req });
 
@@ -70,6 +86,43 @@ router.post('/login', loginLimiter, (req, res) => {
 
   res.json({
     token,
+    user: { id: user.id, username: user.username, role: user.role, name: user.name, email: user.email, organization_id: user.organization_id ?? null }
+  });
+});
+
+// POST /api/auth/mfa/login — exchange mfa_token + TOTP code for a full session.
+const mfaLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 15,
+  message: 'Too many MFA attempts. Please wait 15 minutes and try again.',
+});
+router.post('/mfa/login', mfaLoginLimiter, (req, res) => {
+  const mfaToken = String(req.body.mfa_token || '');
+  const code = String(req.body.code || '').trim();
+  if (!mfaToken || !code) return res.status(400).json({ error: 'mfa_token and code are required' });
+
+  let payload;
+  try {
+    payload = jwt.verify(mfaToken, JWT_SECRET);
+  } catch (e) {
+    return res.status(401).json({ error: 'MFA session expired. Sign in again.' });
+  }
+  if (!payload.mfa_pending) return res.status(401).json({ error: 'Invalid MFA session' });
+
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(payload.id);
+  if (!user || user.status === 'suspended' || !user.mfa_enabled || !user.mfa_secret) {
+    return res.status(401).json({ error: 'MFA session no longer valid. Sign in again.' });
+  }
+  const { verify: verifyTotp } = require('../mfa');
+  if (!verifyTotp(user.mfa_secret, code)) {
+    logAudit({ performedBy: user.id, action: 'mfa_login_failed', targetType: 'user', targetId: user.id, req });
+    return res.status(401).json({ error: 'Invalid authentication code.' });
+  }
+
+  touchLastLogin(user.id);
+  logAudit({ performedBy: user.id, action: 'login', targetType: 'user', targetId: user.id, req, module: 'mfa' });
+  res.json({
+    token: signToken(user),
     user: { id: user.id, username: user.username, role: user.role, name: user.name, email: user.email, organization_id: user.organization_id ?? null }
   });
 });

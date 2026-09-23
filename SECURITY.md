@@ -11,7 +11,7 @@ are actually in place.
 | Transport | HTTPS via Railway + `www.humsee.works` (apex 301 → www) |
 | Headers | `helmet` (X-Frame-Options, nosniff, HSTS, referrer-policy) |
 | CORS | Allowlist `CORS_ORIGINS` (default humsee.works + localhost:3000) |
-| AuthN | JWT Bearer (1d) + bcrypt password hashes; optional Firebase Google |
+| AuthN | JWT Bearer (1d) + bcrypt password hashes; optional Firebase Google; optional TOTP MFA (`backend/mfa.js`, pure crypto) |
 | AuthZ | Role (`admin`/`employee`) + permission matrix (`role_permissions`) |
 | Rate limit | Login 10/15min/IP; Google login 30/15min/IP → 429 |
 | Secrets | `JWT_SECRET`, `ADMIN_PASSWORD`, `EMPLOYEE_PASSWORD`, `GMAIL_TOKEN_KEY` from Railway env; no secrets in git |
@@ -47,8 +47,8 @@ Do **not** put raw resume text or full candidate PII in `detail` beyond ids/emai
 | Item | Status |
 |------|--------|
 | Multi-tenant isolation (RLS / per-tenant queries) | Schema only (`organization_id`); not enforced per request |
-| MFA / SSO (SAML/OIDC) / SCIM | Not implemented |
-| Password reset / account lockout | Not implemented (rate limit only) |
+| MFA / SSO (SAML/OIDC) / SCIM | TOTP MFA implemented (`/api/auth/mfa/*`, admin-only self-service UI); SSO/SCIM not implemented |
+| Password reset / account lockout | Not implemented (rate limit only); role/suspend admin UI shipped (`/users`) |
 | Object storage (S3) for files | Still volume filesystem |
 | Encrypted backups / DR (RPO/RTO) | Railway volume only — not tested |
 | HA / multi-instance | Single process |
@@ -76,5 +76,6 @@ Do **not** put raw resume text or full candidate PII in `detail` beyond ids/emai
 ## Postgres migration (when triggered)
 
 Triggers: multiple customer orgs, concurrent writers, read replicas, formal backup/replication.
-Path: keep repositories (`backend/repositories/`), swap driver, add RLS on `organization_id`.
-See `backend/migrations/README.md`.
+Path: driver abstraction in `backend/db/driver.js` (`DB_DRIVER=postgres` + `DATABASE_URL` +
+`pg` lazy-loaded); keep repositories (`backend/repositories/`), flip them to `await` first,
+then add RLS on `organization_id`. See `backend/migrations/README.md` for the checklist.

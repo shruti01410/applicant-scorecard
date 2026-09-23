@@ -5,13 +5,16 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../services/AuthContext';
 
 export default function LoginPage() {
-  const { login, loginWithGoogle } = useAuth();
+  const { login, loginWithGoogle, loginWithMfa } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleEnabled, setGoogleEnabled] = useState(false);
   const [logoFailed, setLogoFailed] = useState(false);
+  const [mfaPending, setMfaPending] = useState(null); // { mfa_token }
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaLoading, setMfaLoading] = useState(false);
 
   useEffect(() => {
     import('../services/firebase')
@@ -25,11 +28,29 @@ export default function LoginPage() {
     setError('');
     try {
       const user = await login(values.username, values.password);
+      if (user && user.mfa_required) {
+        setMfaPending({ mfa_token: user.mfa_token });
+        return;
+      }
       navigate(user.role === 'admin' ? '/' : '/');
     } catch (e) {
       setError(e.message || 'Invalid credentials');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function onMfaFinish(e) {
+    e && e.preventDefault();
+    setMfaLoading(true);
+    setError('');
+    try {
+      const user = await loginWithMfa(mfaPending.mfa_token, mfaCode);
+      navigate(user.role === 'admin' ? '/' : '/');
+    } catch (err) {
+      setError(err.message || 'Invalid authentication code');
+    } finally {
+      setMfaLoading(false);
     }
   }
 
@@ -65,6 +86,35 @@ export default function LoginPage() {
           <Typography.Text type="secondary" style={{ display:'block', textAlign:'center', fontSize:14 }}>Sign in to your organization account</Typography.Text>
         </div>
         {error && <Alert type="error" description={error} showIcon style={{ marginBottom: 16 }} />}
+        {mfaPending ? (
+          <form onSubmit={onMfaFinish}>
+            <Alert type="info" showIcon style={{ marginBottom: 16 }}
+              message="Two-factor authentication"
+              description="Enter the 6-digit code from your authenticator app." />
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontWeight: 600, fontSize: 13, color: '#374151', display: 'block', marginBottom: 6 }}>Authentication code</label>
+              <Input
+                autoFocus
+                size="large"
+                maxLength={6}
+                placeholder="123456"
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ''))}
+                style={{ borderRadius: 8, letterSpacing: '0.3em', textAlign: 'center', fontSize: 18 }}
+              />
+            </div>
+            <Button className="btn-primary full-width" htmlType="submit" block size="large" loading={mfaLoading}
+              disabled={mfaCode.length !== 6} style={{ borderRadius: 8, height: 44, fontWeight: 700 }}>
+              Verify
+            </Button>
+            <div style={{ textAlign: 'center', marginTop: 12 }}>
+              <Button type="link" size="small" onClick={() => { setMfaPending(null); setMfaCode(''); setError(''); }}>
+                ← Back to sign in
+              </Button>
+            </div>
+          </form>
+        ) : (
+        <>
         {googleEnabled && (
           <>
             <Button
@@ -96,6 +146,8 @@ export default function LoginPage() {
             Sign In
           </Button>
         </Form>
+        </>
+        )}
 
         <div style={{ textAlign: 'center', marginTop: 18 }}>
           <Typography.Text type="secondary" style={{ fontSize: 12, color: '#94a3b8' }}>
