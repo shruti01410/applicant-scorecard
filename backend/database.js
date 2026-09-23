@@ -1,11 +1,17 @@
 const { DatabaseSync } = require('node:sqlite');
 const bcrypt = require('bcryptjs');
 const path = require('path');
+const { defaultAdminPassword, defaultEmployeePassword, isWeakPassword } = require('./security');
 
 const db = new DatabaseSync(process.env.SQLITE_PATH || path.join(__dirname, 'scorecard.db'));
 
 db.exec(`
   PRAGMA foreign_keys = ON;
+
+  CREATE TABLE IF NOT EXISTS schema_migrations (
+    version TEXT PRIMARY KEY,
+    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -17,11 +23,35 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS organizations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    slug TEXT UNIQUE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    performed_by INTEGER,
+    user_id INTEGER,
+    username TEXT,
+    action TEXT NOT NULL,
+    target_type TEXT,
+    target_id INTEGER,
+    module TEXT,
+    detail TEXT,
+    ip TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (performed_by) REFERENCES users(id)
+  );
+
   CREATE TABLE IF NOT EXISTS parameters (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT,
-    weightage INTEGER NOT NULL
+    weightage INTEGER NOT NULL,
+    grp TEXT CHECK(grp IN ('PERSON', 'ROLE', 'DEAL')),
+    status TEXT DEFAULT 'active' CHECK(status IN ('active', 'legacy'))
   );
 
   CREATE TABLE IF NOT EXISTS scorecards (
@@ -43,7 +73,9 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     scorecard_id INTEGER NOT NULL,
     parameter_id INTEGER NOT NULL,
-    score INTEGER NOT NULL CHECK(score >= 1 AND score <= 5),
+    score INTEGER,
+    status TEXT DEFAULT 'active' CHECK(status IN ('active', 'na', 'not_scored')),
+    note TEXT,
     UNIQUE(scorecard_id, parameter_id),
     FOREIGN KEY (scorecard_id) REFERENCES scorecards(id) ON DELETE CASCADE,
     FOREIGN KEY (parameter_id) REFERENCES parameters(id)
@@ -54,6 +86,40 @@ db.exec(`
     scorecard_id INTEGER NOT NULL,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     source TEXT DEFAULT 'manual' CHECK(source IN ('manual', 'numerology_suggested')),
+    FOREIGN KEY (scorecard_id) REFERENCES scorecards(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS scoring_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scorecard_id INTEGER NOT NULL UNIQUE,
+    rules_version TEXT,
+    pursuit_priority_raw REAL,
+    pursuit_priority_display INTEGER,
+    base_band TEXT,
+    final_decision TEXT,
+    gate_flags TEXT,
+    candidate_fit REAL,
+    person_score REAL,
+    role_score REAL,
+    jd_match_score REAL,
+    joining_probability REAL,
+    joining_band TEXT,
+    confidence_score REAL,
+    confidence_label TEXT,
+    confidence_evidence TEXT,
+    deal_factors TEXT,
+    interview_focus TEXT,
+    calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (scorecard_id) REFERENCES scorecards(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS deal_factor_scores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scorecard_id INTEGER NOT NULL,
+    factor_key TEXT NOT NULL,
+    score INTEGER,
+    note TEXT,
+    UNIQUE(scorecard_id, factor_key),
     FOREIGN KEY (scorecard_id) REFERENCES scorecards(id) ON DELETE CASCADE
   );
 
@@ -80,6 +146,51 @@ db.exec(`
     reviewed_by INTEGER REFERENCES users(id),
     reviewed_at DATETIME,
     sent_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS approval_workflows (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    candidate_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    approval_type TEXT NOT NULL DEFAULT 'panel' CHECK(approval_type IN ('single', 'panel')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected', 'hold', 'escalated')),
+    completed_at DATETIME,
+    created_by INTEGER REFERENCES users(id),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS approval_panels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workflow_id INTEGER NOT NULL REFERENCES approval_workflows(id) ON DELETE CASCADE,
+    panel_name TEXT NOT NULL,
+    rule_type TEXT NOT NULL CHECK(rule_type IN ('any_one', 'all', 'majority', 'custom')),
+    required_approvals INTEGER,
+    status TEXT NOT NULL DEFAULT 'awaiting' CHECK(status IN ('awaiting', 'approved', 'rejected', 'hold')),
+    deadline DATETIME,
+    sent_at DATETIME,
+    completed_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS approval_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    panel_id INTEGER NOT NULL REFERENCES approval_panels(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    role TEXT,
+    decision TEXT CHECK(decision IN ('approve', 'reject', 'hold')),
+    comment TEXT,
+    reviewed_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(panel_id, user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS approval_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workflow_id INTEGER NOT NULL REFERENCES approval_workflows(id) ON DELETE CASCADE,
+    panel_id INTEGER,
+    action TEXT NOT NULL,
+    detail TEXT,
+    performed_by INTEGER REFERENCES users(id),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -244,6 +355,19 @@ try {
 } catch (e) {}
 
 try {
+  const aCols = db.prepare(`PRAGMA table_info(audit_logs)`).all().map(r => r.name);
+  if (aCols.length) {
+    if (!aCols.includes('user_id')) db.exec('ALTER TABLE audit_logs ADD COLUMN user_id INTEGER');
+    if (!aCols.includes('username')) db.exec('ALTER TABLE audit_logs ADD COLUMN username TEXT');
+    if (!aCols.includes('module')) db.exec('ALTER TABLE audit_logs ADD COLUMN module TEXT');
+  }
+} catch (e) {}
+
+try {
+  db.prepare(`INSERT OR IGNORE INTO schema_migrations (version) VALUES ('001_baseline')`).run();
+} catch (e) {}
+
+try {
   const uCols = db.prepare(`PRAGMA table_info(users)`).all().map(r => r.name);
   if (!uCols.includes('job_description_id')) db.exec(`ALTER TABLE users ADD COLUMN job_description_id INTEGER REFERENCES job_descriptions(id)`);
   if (!uCols.includes('resume_file_path')) db.exec(`ALTER TABLE users ADD COLUMN resume_file_path TEXT`);
@@ -254,6 +378,17 @@ try {
   if (!uCols.includes('is_archived')) db.exec(`ALTER TABLE users ADD COLUMN is_archived INTEGER DEFAULT 0`);
   if (!uCols.includes('date_of_birth')) db.exec(`ALTER TABLE users ADD COLUMN date_of_birth TEXT`);
   if (!uCols.includes('company_id')) db.exec(`ALTER TABLE users ADD COLUMN company_id INTEGER REFERENCES company_numerology_profiles(id)`);
+  if (!uCols.includes('organization_id')) db.exec(`ALTER TABLE users ADD COLUMN organization_id INTEGER REFERENCES organizations(id)`);
+  if (!uCols.includes('status')) db.exec(`ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'active' CHECK(status IN ('active', 'suspended'))`);
+  if (!uCols.includes('auth_provider')) db.exec(`ALTER TABLE users ADD COLUMN auth_provider TEXT DEFAULT 'local'`);
+  if (!uCols.includes('last_login_at')) db.exec(`ALTER TABLE users ADD COLUMN last_login_at DATETIME`);
+  // seed the default organization (single-tenant HUMSEE) and backfill existing
+  // users so every record carries an organization_id from now on.
+  db.prepare(`INSERT OR IGNORE INTO organizations (name, slug) VALUES ('HUMSEE', 'humsee')`).run();
+  const defOrg = db.prepare(`SELECT id FROM organizations WHERE slug = 'humsee'`).get();
+  if (defOrg) {
+    db.prepare(`UPDATE users SET organization_id = ? WHERE organization_id IS NULL`).run(defOrg.id);
+  }
 } catch (e) {}
 
 try {
@@ -318,6 +453,11 @@ try {
 } catch (e) {}
 
 try {
+  const scCols = db.prepare(`PRAGMA table_info(scorecards)`).all().map(r => r.name);
+  if (!scCols.includes('assigned_recruiter_id')) db.exec(`ALTER TABLE scorecards ADD COLUMN assigned_recruiter_id INTEGER REFERENCES users(id)`);
+} catch (e) {}
+
+try {
   const emCols = db.prepare(`PRAGMA table_info(candidate_emails)`).all().map(r => r.name);
   if (!emCols.includes('gmail_draft_id')) db.exec(`ALTER TABLE candidate_emails ADD COLUMN gmail_draft_id TEXT`);
   if (!emCols.includes('gmail_account_id')) db.exec(`ALTER TABLE candidate_emails ADD COLUMN gmail_account_id INTEGER`);
@@ -328,6 +468,113 @@ try {
   const ws = db.prepare('SELECT value FROM org_settings WHERE key = ?').get('numerology_weights');
   if (!ws) db.prepare('INSERT INTO org_settings (key, value) VALUES (?, ?)').run('numerology_weights', JSON.stringify({ dob: 0.7, name: 0.3 }));
 } catch (e) {}
+
+// ---- SOP scoring-model migrations (16-param PERSON/ROLE/DEAL) ----
+try {
+  const pCols = db.prepare('PRAGMA table_info(parameters)').all().map(r => r.name);
+  if (!pCols.includes('grp')) db.exec('ALTER TABLE parameters ADD COLUMN grp TEXT');
+  if (!pCols.includes('status')) db.exec('ALTER TABLE parameters ADD COLUMN status TEXT');
+} catch (e) {
+  console.error('[params grp/status] migration failed:', e.message);
+}
+
+try {
+  const sCols = db.prepare('PRAGMA table_info(scores)').all().map(r => r.name);
+  if (!sCols.includes('status')) {
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+      ALTER TABLE scores RENAME TO scores_legacy;
+      CREATE TABLE scores (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        scorecard_id INTEGER NOT NULL,
+        parameter_id INTEGER NOT NULL,
+        score INTEGER,
+        status TEXT DEFAULT 'active' CHECK(status IN ('active', 'na', 'not_scored')),
+        note TEXT,
+        UNIQUE(scorecard_id, parameter_id),
+        FOREIGN KEY (scorecard_id) REFERENCES scorecards(id) ON DELETE CASCADE,
+        FOREIGN KEY (parameter_id) REFERENCES parameters(id)
+      );
+      INSERT INTO scores (id, scorecard_id, parameter_id, score, status)
+        SELECT id, scorecard_id, parameter_id, score, 'active' FROM scores_legacy;
+      DROP TABLE scores_legacy;
+      PRAGMA foreign_keys = ON;
+    `);
+  }
+} catch (e) {
+  console.error('[scores] migration failed:', e.message);
+}
+
+// Rebuild parameter_evidence without the legacy 1-5 CHECK (SOP auto-rate stores 0-100 evidence).
+try {
+  const peCols = db.prepare('PRAGMA table_info(parameter_evidence)').all().map(r => r.name);
+  if (peCols.includes('score')) {
+    // Detect legacy 1-5 CHECK via the SQLite schema SQL.
+    const sql = (db.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='parameter_evidence'`).get() || {}).sql || '';
+    if (/score\s*>=?\s*1\s*AND\s*score\s*<=?\s*5/.test(sql)) {
+      db.exec(`
+        PRAGMA foreign_keys = OFF;
+        ALTER TABLE parameter_evidence RENAME TO parameter_evidence_legacy;
+        CREATE TABLE parameter_evidence (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          scorecard_id INTEGER NOT NULL,
+          parameter_id INTEGER NOT NULL,
+          score REAL,
+          confidence REAL NOT NULL DEFAULT 0.5 CHECK(confidence >= 0 AND confidence <= 1),
+          evidence_items TEXT NOT NULL DEFAULT '[]',
+          source TEXT DEFAULT 'auto' CHECK(source IN ('auto','manual')),
+          reason TEXT,
+          jd_match_pct REAL,
+          created_at TEXT DEFAULT (datetime('now')),
+          UNIQUE(scorecard_id, parameter_id),
+          FOREIGN KEY (scorecard_id) REFERENCES scorecards(id) ON DELETE CASCADE,
+          FOREIGN KEY (parameter_id) REFERENCES parameters(id)
+        );
+        INSERT INTO parameter_evidence (id, scorecard_id, parameter_id, score, confidence, evidence_items, source, reason, jd_match_pct, created_at)
+          SELECT id, scorecard_id, parameter_id, score, confidence, evidence_items, source, reason, jd_match_pct, created_at FROM parameter_evidence_legacy;
+        DROP TABLE parameter_evidence_legacy;
+        PRAGMA foreign_keys = ON;
+      `);
+    }
+  }
+} catch (e) {
+  console.error('[parameter_evidence] migration failed:', e.message);
+}
+
+// ---- Seed SOP 16 parameters (10 PERSON / 3 ROLE / 3 DEAL), legacy rows read-only ----
+// One-time guard: only when no SOP-grouped parameters exist yet.
+const activeParamCount = db.prepare('SELECT COUNT(*) AS c FROM parameters WHERE grp IS NOT NULL').get().c;
+if (activeParamCount === 0) {
+  db.exec(`UPDATE parameters SET status = 'legacy' WHERE status IS NULL OR grp IS NULL`);
+  const existing = db.prepare('SELECT COUNT(*) AS c FROM parameters WHERE grp IS NOT NULL').get().c;
+  if (existing === 0) {
+    const insertParam = db.prepare(
+      'INSERT INTO parameters (id, name, description, weightage, grp, status) VALUES (?, ?, ?, ?, ?, ?)'
+    );
+    const params = [
+      // PERSON — 10 parameters, weights sum to 100
+      [101, 'Communication & Influence', 'Clarity, articulation, persuasion and responsiveness', 12, 'PERSON', 'active'],
+      [102, 'Problem Solving & Analytical Thinking', 'Analysis, reasoning and structured problem-solving', 14, 'PERSON', 'active'],
+      [103, 'Judgment & Decision-Making', 'Sound, timely decisions under ambiguity', 12, 'PERSON', 'active'],
+      [104, 'Collaboration & Teamwork', 'Cooperation, interpersonal dynamics and collective results', 10, 'PERSON', 'active'],
+      [105, 'Adaptability, Agility & Resilience', 'Flexibility and composure under changing demands', 10, 'PERSON', 'active'],
+      [106, 'Initiative & Drive', 'Proactiveness, energy and self-direction', 10, 'PERSON', 'active'],
+      [107, 'Learning & Growth Orientation', 'Willingness to learn and improve', 8, 'PERSON', 'active'],
+      [108, 'Leadership Potential', 'Capacity to grow into leadership (role-activated)', 8, 'PERSON', 'active'],
+      [109, 'Reliability & Professionalism', 'Dependability, punctuality, poise and ethics', 8, 'PERSON', 'active'],
+      [110, 'Values & Work-Environment Alignment', 'Alignment with team values and mission', 8, 'PERSON', 'active'],
+      // ROLE — 3 parameters, weights sum to 100
+      [111, 'Technical / Role Competence', 'Depth of relevant technical/domain expertise', 50, 'ROLE', 'active'],
+      [112, 'Experience & Industry Relevance', 'Relevance of past roles and industry knowledge', 30, 'ROLE', 'active'],
+      [113, 'Qualifications & Certifications', 'Credentials; N/A when not required by the JD', 20, 'ROLE', 'active'],
+      // DEAL — 3 parameters, weights sum to 100
+      [114, 'Motivation & Role Intent', 'Active-search urgency, career motive, commitment and engagement', 40, 'DEAL', 'active'],
+      [115, 'Availability & Joining Readiness', 'Timeline, competing processes, counter-offer and joining risks', 40, 'DEAL', 'active'],
+      [116, 'Compensation Alignment', 'Current/expected pay, flexibility and offer feasibility', 20, 'DEAL', 'active'],
+    ];
+    params.forEach(p => insertParam.run(...p));
+  }
+}
 
 function makeUsername(name) {
   const parts    = name.trim().toLowerCase().split(/\s+/);
@@ -341,39 +588,7 @@ function makeUsername(name) {
   return username;
 }
 
-// ---- Seed 23 weighted parameters (weights sum to 100) ----
-const paramCount = db.prepare('SELECT COUNT(*) AS count FROM parameters').get();
-if (paramCount.count === 0) {
-  const insertParam = db.prepare(
-    'INSERT INTO parameters (id, name, description, weightage) VALUES (?, ?, ?, ?)'
-  );
-  const params = [
-    [1,  'Communication',                    'Clarity, articulation and responsiveness', 5],
-    [2,  'Technical Skills',                 'Depth of relevant technical/domain expertise', 7],
-    [3,  'Problem Solving',                  'Approach to analysing and resolving issues', 6],
-    [4,  'Attitude',                         'Overall disposition and engagement', 4],
-    [5,  'Teamwork',                         'Collaboration and interpersonal dynamics', 4],
-    [6,  'Adaptability',                     'Flexibility to changing requirements', 4],
-    [7,  'Experience Relevance',             'Relevance of past roles to the position', 6],
-    [8,  'Education & Certifications',       'Qualifications and credentials', 3],
-    [9,  'Cultural Fit',                     'Alignment with team values and mission', 4],
-    [10, 'Leadership Potential',             'Capacity to grow into leadership', 4],
-    [11, 'Urgency / Availability',           'Notice period and start date feasibility', 4],
-    [12, 'Growth Mindset',                   'Willingness to learn and improve', 4],
-    [13, 'Reliability',                      'Dependability and consistency', 4],
-    [14, 'Client-Specific Skills',           'Skills directly required by the client', 5],
-    [15, 'Industry Knowledge',               'Familiarity with the industry', 3],
-    [16, 'Salary Expectations',              'Compensation alignment', 3],
-    [17, 'Interview Performance',            'Overall execution during interviews', 7],
-    [18, 'Presentation Skills',              'Ability to present ideas effectively', 3],
-    [19, 'Analytical Abilities',             'Data-driven reasoning and judgement', 4],
-    [20, 'Initiative',                       'Proactiveness and self-direction', 4],
-    [21, 'Professionalism',                  'Punctuality, poise and ethics', 4],
-    [22, 'Schedule Flexibility',             'Availability for calls and shifts', 3],
-    [23, 'Overall Impression',               'Hiring manager overall disposition', 5],
-  ];
-  params.forEach(p => insertParam.run(...p));
-}
+// ---- (SOP 16-parameter seed now lives in the migration block above) ----
 
 // ---- Seed numerology archetypes (1-9 + masters 11, 22) ----
 const archCount = db.prepare('SELECT COUNT(*) AS count FROM numerology_archetypes').get();
@@ -408,15 +623,16 @@ try {
 
 // ---- Seed users ----
 const userCount = db.prepare('SELECT COUNT(*) AS count FROM users').get();
+const defOrgId = db.prepare("SELECT id FROM organizations WHERE slug = 'humsee'").get()?.id || 1;
 if (userCount.count === 0) {
   const insertUser = db.prepare(
-    'INSERT INTO users (username, password, role, name, email) VALUES (?, ?, ?, ?, ?)'
+    'INSERT INTO users (username, password, role, name, email, organization_id) VALUES (?, ?, ?, ?, ?, ?)'
   );
-  const adminPass = bcrypt.hashSync('12345',    10);
-  const empPass   = bcrypt.hashSync('12345',    10);
+  const adminPass = bcrypt.hashSync(defaultAdminPassword(), 10);
+  const empPass   = bcrypt.hashSync(defaultEmployeePassword(), 10);
 
-  insertUser.run('test123', adminPass, 'admin', 'Admin User', 'admin@scorecard.com');
-  insertUser.run('Risha', bcrypt.hashSync('rishasinha', 10), 'admin', 'Risha Sinha', 'risha@scorecard.com');
+  insertUser.run('test123', adminPass, 'admin', 'Admin User', 'admin@scorecard.com', defOrgId);
+  insertUser.run('Risha', bcrypt.hashSync(defaultAdminPassword(), 10), 'admin', 'Risha Sinha', 'risha@scorecard.com', defOrgId);
 
   const employeeNames = [
     'Haroon Ali Khan',
@@ -434,16 +650,31 @@ if (userCount.count === 0) {
   employeeNames.forEach(name => {
     const username = makeUsername(name);
     const email    = username + '@scorecard.com';
-    insertUser.run(username, empPass, 'employee', name, email);
+    insertUser.run(username, empPass, 'employee', name, email, defOrgId);
   });
 }
 
 try {
   const hasRisha = db.prepare('SELECT id FROM users WHERE LOWER(username) = ?').get('risha');
   if (!hasRisha) {
-    db.prepare('INSERT INTO users (username, password, role, name, email) VALUES (?, ?, ?, ?, ?)').run('Risha', bcrypt.hashSync('rishasinha', 10), 'admin', 'Risha Sinha', 'risha@scorecard.com');
+    db.prepare('INSERT INTO users (username, password, role, name, email, organization_id) VALUES (?, ?, ?, ?, ?, ?)').run('Risha', bcrypt.hashSync(defaultAdminPassword(), 10), 'admin', 'Risha Sinha', 'risha@scorecard.com', defOrgId);
   }
 } catch (e) {}
+
+// ---- Rotate weak demo passwords (12345 / rishasinha / etc.) on startup ----
+try {
+  const weakUsers = db.prepare('SELECT id, username, role, password FROM users').all();
+  let rotated = 0;
+  for (const u of weakUsers) {
+    if (!isWeakPassword(u.password)) continue;
+    const plain = u.role === 'admin' ? defaultAdminPassword() : defaultEmployeePassword();
+    db.prepare('UPDATE users SET password = ? WHERE id = ?').run(bcrypt.hashSync(plain, 10), u.id);
+    rotated++;
+  }
+  if (rotated > 0) console.log(`[security] Rotated ${rotated} weak user password(s).`);
+} catch (e) {
+  console.warn('[security] Weak-password rotation skipped:', e.message);
+}
 
 // ---- JD keyword backfill: seed jd_keywords from each JD's extracted entities.
 // Idempotent — only seeds JDs that have no keyword rows yet, so an existing

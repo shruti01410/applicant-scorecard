@@ -4,6 +4,41 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const gmail = require('../gmailService');
 
 const router = express.Router();
+
+// Google redirects here after the recruiter consents. This route MUST be public
+// (no JWT): Google's redirect carries no Authorization header, so protect it with
+// the signed OAuth state + the short-lived auth code instead. Declared before the
+// auth middleware below so it is not blocked.
+router.get('/oauth/callback', async (req, res) => {
+  const state = gmail.verifyState(req.query.state);
+  const returnTo = state ? state.returnTo : '/decision-center';
+  if (!state) {
+    return res.redirect(`${returnTo}?gmail=invalid_state`);
+  }
+  if (req.query.error) {
+    return res.redirect(`${returnTo}?gmail=denied`);
+  }
+  const cfg = gmail.getConfig();
+  try {
+    const tokens = await gmail.exchangeCode({ code: req.query.code, redirectUri: redirectUri(req), cfg });
+    const profile = await gmail.fetchGmailProfile(tokens.access_token);
+    gmail.storeConnection({
+      userId: state.uid,
+      accountEmail: profile.emailAddress,
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token || null,
+      scopes: tokens.scope || gmail.GMAIL_COMPOSE_SCOPE,
+      expiresAt: gmail.expiresAtString(tokens.expires_in),
+      cfg,
+    });
+    db.prepare(`UPDATE recruiter_profiles SET gmail_authorized = 1, google_account_connected = 1, updated_at = datetime('now') WHERE user_id = ?`).run(state.uid);
+    res.redirect(`${returnTo}?gmail=connected`);
+  } catch (e) {
+    console.error('[gmail-callback] error:', e.code || e.name, e.message, (e.details || '').slice(0, 400));
+    res.redirect(`${returnTo}?gmail=error`);
+  }
+});
+
 router.use(authenticate, requireRole('admin'));
 
 function getEmployee(id) {
@@ -46,36 +81,6 @@ router.get('/connect', (req, res) => {
   res.json({
     authUrl: gmail.authorizationUrl({ clientId: cfg.clientId, redirectUri: redirectUri(req), state }),
   });
-});
-
-// Google redirects here after the recruiter consents.
-router.get('/oauth/callback', async (req, res) => {
-  const state = gmail.verifyState(req.query.state);
-  const returnTo = state ? state.returnTo : '/decision-center';
-  if (!state) {
-    return res.redirect(`${returnTo}?gmail=invalid_state`);
-  }
-  if (req.query.error) {
-    return res.redirect(`${returnTo}?gmail=denied`);
-  }
-  const cfg = gmail.getConfig();
-  try {
-    const tokens = await gmail.exchangeCode({ code: req.query.code, redirectUri: redirectUri(req), cfg });
-    const profile = await gmail.fetchGmailProfile(tokens.access_token);
-    gmail.storeConnection({
-      userId: state.uid,
-      accountEmail: profile.emailAddress,
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token || null,
-      scopes: tokens.scope || gmail.GMAIL_COMPOSE_SCOPE,
-      expiresAt: gmail.expiresAtString(tokens.expires_in),
-      cfg,
-    });
-    db.prepare(`UPDATE recruiter_profiles SET gmail_authorized = 1, google_account_connected = 1, updated_at = datetime('now') WHERE user_id = ?`).run(state.uid);
-    res.redirect(`${returnTo}?gmail=connected`);
-  } catch (e) {
-    res.redirect(`${returnTo}?gmail=error`);
-  }
 });
 
 // Disconnect the recruiter's Gmail account.

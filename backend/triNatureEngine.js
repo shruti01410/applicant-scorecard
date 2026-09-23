@@ -184,11 +184,11 @@ function affinityFor(param, num) {
 
 const CATEGORIES = {
   Expression: { name:'Expression', desc:'How you communicate and present ideas', params:['Communication','Persuasiveness','Storytelling','Creative Thinking'], icon:'expression' },
-  Attitude:   { name:'Attitude', desc:'Stable day-to-day patterns of behaviour', params:['Diplomatic','Aggressive','Passive','Dominant'], icon:'attitude' },
-  Unmasked:   { name:'Unmasked', desc:'Demonstrated track record — what the resume shows', params:['Initiative','Persistence','Discipline','Commitment','Groundedness'], icon:'unmasked' },
+  Attitude:   { name:'Interaction Style', desc:'Stable day-to-day patterns of behaviour', params:['Diplomatic','Aggressive','Passive','Dominant'], icon:'attitude' },
+  Unmasked:   { name:'Work Character', desc:'Demonstrated track record — what the resume shows', params:['Initiative','Persistence','Discipline','Commitment','Groundedness'], icon:'unmasked' },
   Personality:{ name:'Personality', desc:'Self-awareness and authenticity', params:['Self-Awareness','Authenticity'], icon:'personality' },
-  'Soul Urge':{ name:'Soul Urge', desc:'Inner drivers — independence and values', params:['Independence','Value Alignment'], icon:'soul-urge' },
-  Masked:     { name:'Masked', desc:'Interview-only situational traits — shift under pressure', params:['Ambition','Competitive Drive','Dominance','Ego'], icon:'masked' },
+  'Soul Urge':{ name:'Inner Drivers', desc:'Inner drivers — independence and values', params:['Independence','Value Alignment'], icon:'soul-urge' },
+  Masked:     { name:'Pressure Traits', desc:'Interview-only situational traits — shift under pressure, never used in the SOP score', params:['Ambition','Competitive Drive','Dominance','Ego'], icon:'masked' },
 };
 
 const MASKED_SCENARIOS = [

@@ -2,9 +2,11 @@
 
 > Internal tool for a recruiting/staffing agency. Admins rate candidates against **23 weighted parameters** (weights sum to 100%) and bulk-import from Excel; each employee has a read-only view of their own scorecard. Includes an **Inner Intelligence** module (numerology-based reflection, admin-only, feature-flagged).
 
-**Live**: `https://applicant-scorecard-production.up.railway.app`  
-**Admin creds**: `test123` / `12345`  
-**Deploy**: push to `master` → Railway auto-deploys
+**Live**: `https://www.humsee.works`  
+**Admin creds**: `test123` / Railway `ADMIN_PASSWORD` (local fallback `Humsee!Admin_2026`)  
+**Employee**: username = first initial + last name (e.g. `tsharma`) / Railway `EMPLOYEE_PASSWORD`  
+**Apex 301**: `humsee.works` → `https://www.humsee.works` (GoDaddy Forwarding, Permanent)  
+**Deploy**: `railway up --yes` from repo root
 
 ---
 

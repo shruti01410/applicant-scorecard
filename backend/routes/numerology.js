@@ -15,7 +15,7 @@ const ENABLED = (process.env.ENABLE_INNER_INTELLIGENCE || '').toLowerCase() === 
 
 function gate(req, res) {
   if (!ENABLED) {
-    return res.status(404).json({ error: 'Inner Intelligence is not enabled for this organisation' });
+    return res.status(404).json({ error: 'Behavioral Reflection is not enabled for this organisation' });
   }
   return null;
 }
@@ -624,7 +624,7 @@ router.get('/employees/:id/numerology/company-match', (req, res) => {
   res.json({
     hasComparison: true,
     candidate: { number: candPy, theme: candTheme ? candTheme.theme : null, composite: alignment ? alignment.candidateComposite : null, lifePath: profile.life_path_number, expression: profile.expression_number, birth: profile.birth_number },
-    company: { id: company.id, name: company.client_name, number: compNum, theme: compTheme ? compTheme.theme : null, founded_number: company.founded_number, brand_number: company.brand_number, founder_number: company.founder_number },
+    company: { id: company.id, name: company.client_name, number: compNum, theme: compTheme ? compTheme.theme : null, founded_number: company.founded_number, brand_number: company.brand_number },
     echo: echo.label,
     tone: echo.tone,
     diff: echo.diff,

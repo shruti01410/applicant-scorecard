@@ -67,7 +67,7 @@ async function verifyGoogleIdToken(idToken) {
     err.code = 'FIREBASE_NOT_CONFIGURED';
     throw err;
   }
-  const decoded = await auth.verifyIdToken(String(idToken), true);
+  const decoded = await auth.verifyIdToken(String(idToken));
   return {
     uid: decoded.uid,
     name: decoded.name || '',

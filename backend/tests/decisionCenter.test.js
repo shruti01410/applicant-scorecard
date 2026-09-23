@@ -31,6 +31,12 @@ function seededDb() {
       reviewed_by INTEGER, reviewed_at DATETIME, sent_at DATETIME, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       gmail_draft_id TEXT, gmail_account_id INTEGER, updated_at DATETIME
     );
+    CREATE TABLE audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      performed_by INTEGER, user_id INTEGER, username TEXT, action TEXT NOT NULL,
+      target_type TEXT, target_id INTEGER, module TEXT, detail TEXT, ip TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
     INSERT INTO users (username, password, role, name, email, job_description_id, resume_text, capability_match_detail)
     VALUES ('test123', 'x', 'admin', 'Risha Sinha', 'risha@scorecard.com', NULL, NULL, NULL);
     INSERT INTO users (username, password, role, name, email, job_description_id, resume_text, capability_match_detail)
@@ -54,13 +60,14 @@ async function req(base, path, opts = {}) {
 }
 
 async function withApi(db, handler) {
-  const paths = ['./database', './middleware/auth', './routes/decisions'].map((p) => require.resolve(`../${p.slice(2)}`));
+  const paths = ['./database', './middleware/auth', './routes/decisions', './repositories', './audit'].map((p) => require.resolve(`../${p.slice(2)}`));
   const cached = paths.map((p) => require.cache[p]);
   let server;
   try {
     require.cache[paths[0]] = { exports: db };
     require.cache[paths[1]] = { exports: { authenticate: (req, res, next) => { req.user = { id: 1, role: 'admin' }; next(); }, requireRole: () => (req, res, next) => next() } };
     delete require.cache[paths[2]];
+    delete require.cache[paths[3]];
     const app = express();
     app.use(express.json());
     app.use('/api/admin', require('../routes/decisions'));
@@ -99,6 +106,7 @@ test('DC1. approving a candidate records the decision and creates an approval em
     assert.equal(body.email.recipient_email, 'priya@example.com');
     assert.equal(db.prepare('SELECT COUNT(*) AS c FROM candidate_decisions').get().c, 1);
     assert.equal(db.prepare('SELECT COUNT(*) AS c FROM candidate_emails').get().c, 1);
+    assert.equal(db.prepare("SELECT COUNT(*) AS c FROM audit_logs WHERE action = 'decision_recorded'").get().c, 1);
   });
 });
 

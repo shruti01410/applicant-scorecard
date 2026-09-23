@@ -1,16 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Typography, Spin, Empty, Select, Button, Tag, Modal, Tabs, Dropdown } from 'antd';
 import {
-  Typography, Card, Select, Button, Tag, Space, Spin, Modal, Tooltip, Empty, Tabs,
-} from 'antd';
-import {
-  SwapOutlined, ReloadOutlined, EyeOutlined,
-  CheckCircleFilled, WarningOutlined, QuestionCircleOutlined,
-  FireOutlined, ThunderboltOutlined, HeartOutlined, EyeInvisibleOutlined,
+  SearchOutlined, ReloadOutlined, AppstoreOutlined, UnorderedListOutlined,
+  EditOutlined, MoreOutlined, RightOutlined, SwapOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
+import * as scoreStatus from '../../scoreStatus';
 
-const { Title, Text } = Typography;
+const { Title } = Typography;
+
+const AVATAR_COLORS = ['#33436B', '#6E58C9', '#2E8B57', '#B8860B', '#C0392B', '#2563EB'];
 
 const PARAM_KEYS = [
   { key: 'stillness', label: 'Stillness in Company', color: '#6366f1' },
@@ -22,16 +22,16 @@ const PARAM_KEYS = [
 ];
 
 const ELEMENT_META = {
-  AGNI: { label: 'Momentum', icon: <FireOutlined />, color: '#ef4444', desc: 'Drive, initiative, action' },
-  VAYU: { label: 'Ideation', icon: <ThunderboltOutlined />, color: '#3b82f6', desc: 'Creativity, communication, ideas' },
-  JALA: { label: 'Connection', icon: <HeartOutlined />, color: '#10b981', desc: 'Empathy, patience, emotional depth' },
-  AKASHA: { label: 'Perspective', icon: <EyeInvisibleOutlined />, color: '#8b5cf6', desc: 'Self-awareness, authenticity, values' },
+  AGNI: { label: 'Momentum', color: '#ef4444', desc: 'Drive, initiative, action' },
+  VAYU: { label: 'Ideation', color: '#3b82f6', desc: 'Creativity, communication, ideas' },
+  JALA: { label: 'Connection', color: '#10b981', desc: 'Empathy, patience, emotional depth' },
+  AKASHA: { label: 'Perspective', color: '#8b5cf6', desc: 'Self-awareness, authenticity, values' },
 };
 
 const TRIGUNA_META = {
-  Sattva: { color: '#10b981', label: 'Clarity', desc: 'Clarity, balance, wisdom' },
-  Rajas: { color: '#f59e0b', label: 'Drive', desc: 'Drive, ambition, restlessness' },
-  Tamas: { color: '#6b7280', label: 'Stability', desc: 'Stability, resistance to change' },
+  Sattva: { color: '#10b981', label: 'Clarity' },
+  Rajas: { color: '#f59e0b', label: 'Drive' },
+  Tamas: { color: '#6b7280', label: 'Stability' },
 };
 
 const CATEGORY_ICONS = {
@@ -39,192 +39,213 @@ const CATEGORY_ICONS = {
 };
 
 function scoreColor(s) {
-  if (s >= 70) return '#16a34a';
-  if (s >= 50) return '#2563eb';
-  if (s >= 30) return '#f59e0b';
-  return '#ef4444';
+  return scoreStatus.scoreColor(s);
 }
 
-function deepScoreColor(s) {
-  if (s >= 5) return '#16a34a';
-  if (s === 4) return '#2563eb';
-  if (s === 3) return '#f59e0b';
-  if (s === 2) return '#ef4444';
-  return '#94a3b8';
+function tileTone(v) {
+  if (v == null) return '';
+  if (v >= 65) return 'good';
+  if (v >= 40) return 'amber';
+  return 'bad';
 }
 
-function toneIcon(tone) {
-  if (tone === 'good') return <CheckCircleFilled style={{ color: '#16a34a', fontSize: 12 }} />;
-  if (tone === 'watch') return <WarningOutlined style={{ color: '#ef4444', fontSize: 12 }} />;
-  return <QuestionCircleOutlined style={{ color: '#94a3b8', fontSize: 12 }} />;
+function ringToneClass(v) {
+  if (v == null) return '';
+  if (v >= 65) return 'good';
+  if (v >= 50) return 'amber';
+  return 'bad';
 }
 
-function Bar({ value, max = 100, color, height = 6 }) {
-  const pct = Math.min(100, (value / max) * 100);
+function ringColor(v) {
+  if (v == null) return 'var(--line-soft)';
+  if (v >= 65) return 'var(--good)';
+  if (v >= 50) return 'var(--amber)';
+  return 'var(--bad)';
+}
+
+function initials(name) {
+  return (name || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+}
+
+function avatarColor(id) {
+  return AVATAR_COLORS[Math.abs(Number(id) || 0) % AVATAR_COLORS.length];
+}
+
+function Bar({ value, color }) {
+  const pct = Math.min(100, value || 0);
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <div style={{ flex: 1, height, background: '#e2e8f0', borderRadius: height / 2, overflow: 'hidden' }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: height / 2, transition: 'width 0.3s' }} />
+      <div style={{ flex: 1, height: 6, background: 'var(--line-soft)', borderRadius: 3, overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 3, transition: 'width 0.3s' }} />
       </div>
       <span style={{ fontSize: 11, fontWeight: 600, color: scoreColor(value), minWidth: 28, textAlign: 'right' }}>{value}%</span>
     </div>
   );
 }
 
-function DeepBar({ value, max = 5, color }) {
-  const pct = (value / max) * 100;
+function DeepBar({ value, color }) {
+  const pct = (value / 5) * 100;
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <div style={{ flex: 1, height: 6, background: '#e2e8f0', borderRadius: 3, overflow: 'hidden' }}>
+      <div style={{ flex: 1, height: 6, background: 'var(--line-soft)', borderRadius: 3, overflow: 'hidden' }}>
         <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 3, transition: 'width 0.3s' }} />
       </div>
-      <span style={{ fontSize: 11, fontWeight: 600, color: deepScoreColor(value), minWidth: 22, textAlign: 'right' }}>{value}</span>
+      <span style={{ fontSize: 11, fontWeight: 600, color: scoreColor(value * 20), minWidth: 22, textAlign: 'right' }}>{value}</span>
     </div>
   );
 }
 
-function TriNatureMini({ tri }) {
-  if (!tri) return <div style={{ fontSize: 11, color: '#94a3b8' }}>No behavioral data</div>;
+function scoreBadge(s) {
+  if (s == null) return '—';
+  const w = Math.max(0, Math.min(100, s));
   return (
-    <div style={{ display: 'grid', gap: 3 }}>
-      {Object.entries(tri.elements || {}).map(([el, score]) => {
-        const meta = ELEMENT_META[el];
-        return (
-          <div key={el} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 11, color: '#5c6580', minWidth: 80, display: 'flex', alignItems: 'center', gap: 3 }}>
-              <span style={{ color: meta?.color }}>{meta?.icon}</span> {meta?.label || el}
-            </span>
-            <Bar value={score} color={meta?.color || '#94a3b8'} />
+    <span style={{
+      display: 'inline-block', minWidth: 34, padding: '3px 6px', borderRadius: 8,
+      background: scoreColor(w), color: '#fff', fontWeight: 700, fontSize: 13, textAlign: 'center',
+    }}>{s}</span>
+  );
+}
+
+function toneIcon(p) {
+  if (!p || !p.tone) return null;
+  if (p.tone === 'good') return <span style={{ color: '#16a34a' }}>✔</span>;
+  if (p.tone === 'watch') return <span style={{ color: '#ef4444' }}>!</span>;
+  return null;
+}
+
+function CandidateCard({ c, selected, onToggle, onView, onViewReport, onCapability }) {
+  const avgPct = c.avg_score != null ? Math.round((c.avg_score / 5) * 100) : null;
+  const elements = c.tri_nature?.elements || {};
+  const archetype = c.tri_nature?.signature?.name || c.top_parameter?.name || 'Not evaluated';
+  const tags = [];
+  if (c.tri_nature?.dominantElement) tags.push(ELEMENT_META[c.tri_nature.dominantElement]?.label || c.tri_nature.dominantElement);
+  if (c.tri_nature?.dominantMode) tags.push(TRIGUNA_META[c.tri_nature.dominantMode]?.label || c.tri_nature.dominantMode);
+
+  const roleLine = [c.jd_title, c.company_name].filter(Boolean).join(' · ') || 'No role linked';
+
+  const best = c.deep_params && c.deep_params.length
+    ? c.deep_params.reduce((a, b) => (b.score > a.score ? b : a))
+    : null;
+  const worst = c.deep_params && c.deep_params.length
+    ? c.deep_params.reduce((a, b) => (b.score < a.score ? b : a))
+    : null;
+
+  const kebabItems = [
+    { key: 'scorecard', label: 'Open scorecard', onClick: () => onView(c.id) },
+    { key: 'reflection', label: 'Behavioral Reflection', onClick: () => onViewReport(c.id) },
+    { key: 'capability', label: 'Candidate evaluation', onClick: () => onCapability(c.id) },
+  ];
+
+  return (
+    <div className="cand-card" style={selected ? { borderColor: 'var(--brand)', boxShadow: '0 0 0 1px var(--brand)' } : undefined}>
+      <div className="cc-top">
+        <div className="cc-id">
+          <div className="cc-avatar" style={{ background: avatarColor(c.id) }}>{initials(c.name)}</div>
+          <div style={{ minWidth: 0 }}>
+            <div className="cc-name">{c.name}</div>
+            <div className="cc-role">{roleLine}</div>
           </div>
-        );
-      })}
-      <div style={{ marginTop: 4, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <Tag color={ELEMENT_META[tri.dominantElement]?.color} style={{ margin: 0, fontSize: 10 }}>
-          {ELEMENT_META[tri.dominantElement]?.label}
-        </Tag>
-        <Tag color={TRIGUNA_META[tri.dominantMode]?.color} style={{ margin: 0, fontSize: 10 }}>
-          {TRIGUNA_META[tri.dominantMode]?.label || tri.dominantMode}
-        </Tag>
-      </div>
-      {tri.signature && (
-        <div style={{ fontSize: 10, color: '#8892a8', fontStyle: 'italic', marginTop: 2 }}>
-          {tri.signature.name}
         </div>
-      )}
-    </div>
-  );
-}
-
-function CandidateCard({ c, selected, onToggle, onView }) {
-  return (
-    <Card
-      size="small"
-      hoverable
-      style={{
-        borderRadius: 10,
-        border: selected ? '2px solid #6366f1' : '1px solid #e5e7eb',
-        background: selected ? '#faf5ff' : '#fff',
-        cursor: 'pointer',
-        transition: 'all 0.15s',
-      }}
-      bodyStyle={{ padding: '14px 16px' }}
-      onClick={() => onToggle(c.id)}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 14, color: '#1c2333' }}>{c.name}</div>
-          <div style={{ fontSize: 11, color: '#8892a8' }}>{c.company_name || 'No company'}</div>
-        </div>
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          {c.hasProfile ? (
-            <Tag color="green" style={{ margin: 0, fontSize: 11 }}>Evaluated</Tag>
-          ) : (
-            <Tag color="default" style={{ margin: 0, fontSize: 11 }}>No DOB</Tag>
-          )}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span className={`cc-pill ${c.hasProfile ? 'completed' : 'pending'}`}>
+            {c.hasProfile ? 'Completed' : 'In progress'}
+          </span>
           <input
             type="checkbox"
             checked={selected}
             onChange={() => onToggle(c.id)}
-            onClick={e => e.stopPropagation()}
-            style={{ width: 16, height: 16, accentColor: '#6366f1' }}
+            title="Select to compare"
+            style={{ width: 16, height: 16, accentColor: 'var(--brand)', cursor: 'pointer' }}
           />
         </div>
       </div>
 
-      {/* Top Parameter */}
-      {c.top_parameter && (
-        <div style={{ marginBottom: 10, padding: '6px 10px', background: '#f8fafc', borderRadius: 6, border: '1px solid #e2e8f0' }}>
-          <div style={{ fontSize: 10, fontWeight: 600, color: '#8892a8', textTransform: 'uppercase', letterSpacing: 0.5 }}>Top Parameter</div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: deepScoreColor(c.top_parameter.score) }}>
-            {c.top_parameter.name} — {c.top_parameter.score}/5
-          </div>
+      <div className="cc-score-row">
+        <div
+          className="cc-ring"
+          data-val={avgPct != null ? `${avgPct}%` : '—'}
+          style={{ background: `conic-gradient(${ringColor(avgPct)} 0% ${avgPct || 0}%, var(--line-soft) ${avgPct || 0}% 100%)` }}
+        />
+        <div className="cc-score-text">
+          <div className="label">Overall reflection</div>
+          <div className="archetype">{archetype}</div>
         </div>
-      )}
-
-      {/* 6 Deep Parameters */}
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 10, fontWeight: 600, color: '#8892a8', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Deep Parameters</div>
-        <div style={{ display: 'grid', gap: 3 }}>
-          {(c.deep_params || []).map((p, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 10, color: '#5c6580', minWidth: 120, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {p.name}
-              </span>
-              <DeepBar value={p.score} color={PARAM_KEYS[i]?.color || '#94a3b8'} />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Behavioral Profile */}
-      <div style={{ marginBottom: 8 }}>
-        <div style={{ fontSize: 10, fontWeight: 600, color: '#8892a8', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Behavioral Profile</div>
-        <TriNatureMini tri={c.tri_nature} />
-      </div>
-
-      {/* Category Summary */}
-      {c.tri_nature?.categories && (
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 10, fontWeight: 600, color: '#8892a8', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>6 Categories</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 3 }}>
-            {Object.entries(c.tri_nature.categories).map(([key, cat]) => (
-              <div key={key} style={{ textAlign: 'center', padding: '3px 4px', background: '#f8fafc', borderRadius: 4, border: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: 12 }}>{CATEGORY_ICONS[key]}</div>
-                <div style={{ fontSize: 9, color: '#5c6580', fontWeight: 600 }}>{cat.name}</div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: cat.score != null ? scoreColor(cat.score) : '#94a3b8' }}>
-                  {cat.score != null ? `${cat.score}%` : '—'}
-                </div>
-              </div>
+        {tags.length > 0 && (
+          <div className="cc-tags">
+            {tags.map((t, i) => (
+              <span key={i} className={`ir-tag${i > 0 ? ' violet' : ''}`}>{t}</span>
             ))}
           </div>
-        </div>
-      )}
-
-      {/* Triguna */}
-      {c.tri_nature?.triguna && (
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 4 }}>
-          {Object.entries(c.tri_nature.triguna).filter(([k]) => k !== 'raw').map(([mode, pct]) => (
-            <Tooltip key={mode} title={TRIGUNA_META[mode]?.desc}>
-              <Tag color={TRIGUNA_META[mode]?.color} style={{ margin: 0, fontSize: 10 }}>
-                {TRIGUNA_META[mode]?.label || mode}: {pct}%
-              </Tag>
-            </Tooltip>
-          ))}
-        </div>
-      )}
-
-      <div style={{ marginTop: 8, textAlign: 'right' }}>
-        <Button
-          type="link"
-          size="small"
-          icon={<EyeOutlined />}
-          onClick={e => { e.stopPropagation(); onView(c.id); }}
-          style={{ fontSize: 12, padding: 0, color: '#6366f1' }}
-        >
-          View Details
-        </Button>
+        )}
       </div>
-    </Card>
+
+      <div className="cc-metrics">
+        {(['AGNI', 'VAYU', 'JALA', 'AKASHA']).map(el => {
+          const v = elements[el];
+          const meta = ELEMENT_META[el];
+          return (
+            <div className="metric-tile" key={el} title={meta.desc}>
+              <div className={`m-val ${tileTone(v)}`}>{v != null ? `${v}%` : '—'}</div>
+              <div className="m-label">{meta.label}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="priority-block">
+        <div className="priority-head">
+          <span className="p-label">Inner Intelligence insight</span>
+          {avgPct != null && <span className={`p-pct ${ringToneClass(avgPct)}`}>{avgPct}%</span>}
+        </div>
+        {c.deep_params && c.deep_params.length > 0 ? (
+          <>
+            <div style={{ display: 'grid', gap: 4 }}>
+              {c.deep_params.slice(0, 3).map((p, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 11, color: 'var(--ink-soft)', minWidth: 130, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {p.name}
+                  </span>
+                  <DeepBar value={p.score} color={PARAM_KEYS[i]?.color || '#94a3b8'} />
+                  {toneIcon(p)}
+                </div>
+              ))}
+            </div>
+            <div className="priority-breakdown">
+              {best && <span className="seg">Top: {best.name} {best.score}/5 ({Math.round((best.score / 5) * 100)}%)</span>}
+              {worst && best && worst.score !== best.score && (
+                <>
+                  <span className="sep">·</span>
+                  <span className="seg">Edge: {worst.name} {worst.score}/5</span>
+                </>
+              )}
+              <span className="evidence">{c.hasProfile ? 'Behavioral profile' : 'Add DOB to evaluate'}</span>
+            </div>
+          </>
+        ) : (
+          <div className="priority-breakdown">
+            <span className="seg">No behavioral data yet</span>
+            <span className="evidence">Add DOB to evaluate</span>
+          </div>
+        )}
+      </div>
+
+      <div className="cc-foot">
+        <span className="updated">{c.email || ''}</span>
+        <div className="cc-foot-actions">
+          <a className="view-link" onClick={() => onViewReport(c.id)}>
+            View details
+            <svg viewBox="0 0 20 20" fill="none"><path d="M7 4L13 10L7 16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </a>
+          <button className="edit-score-btn" onClick={() => onView(c.id)}>
+            <EditOutlined />
+            Edit Score
+          </button>
+          <Dropdown menu={{ items: kebabItems }} placement="bottomRight" trigger={['click']}>
+            <button className="kebab-btn" title="More actions"><MoreOutlined /></button>
+          </Dropdown>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -249,30 +270,27 @@ function ComparisonTable({ candidates, section }) {
           <tbody>
             {PARAM_KEYS.map((pk) => {
               const scores = candidates.map(c => {
-                const p = c.deep_params.find(dp => dp.name === pk.label);
+                const p = (c.deep_params || []).find(dp => dp.name === pk.label);
                 return p ? p.score : 0;
               });
               const max = Math.max(...scores);
-              const min = Math.min(...scores.filter(s => s > 0));
-              const hasRange = max !== min && min > 0;
               return (
                 <tr key={pk.key} style={{ background: '#fff' }}>
                   <td style={{ padding: '8px 12px', borderBottom: '1px solid #f0f2f7', position: 'sticky', left: 0, background: '#fff', zIndex: 1 }}>
                     <span style={{ fontWeight: 600, color: '#1c2333' }}>{pk.label}</span>
                   </td>
                   {candidates.map(c => {
-                    const p = c.deep_params.find(dp => dp.name === pk.label);
+                    const p = (c.deep_params || []).find(dp => dp.name === pk.label);
                     const s = p ? p.score : 0;
-                    const isBest = hasRange && s === max;
+                    const isBest = s === max && max > 0;
                     return (
                       <td key={c.id} style={{ textAlign: 'center', padding: '8px 12px', borderBottom: '1px solid #f0f2f7', background: isBest ? '#f0fdf4' : undefined }}>
                         <span style={{
                           display: 'inline-block', width: 30, height: 30, lineHeight: '30px', borderRadius: 15,
-                          background: deepScoreColor(s), color: s > 0 ? '#fff' : '#cbd5e1', fontWeight: 700, fontSize: 13,
+                          background: s > 0 ? scoreColor(s * 20) : '#cbd5e1', color: s > 0 ? '#fff' : '#cbd5e1', fontWeight: 700, fontSize: 13,
                         }}>
                           {s || '—'}
                         </span>
-                        {p && p.tone && <span style={{ marginLeft: 4 }}>{toneIcon(p.tone)}</span>}
                       </td>
                     );
                   })}
@@ -286,7 +304,7 @@ function ComparisonTable({ candidates, section }) {
   }
 
   if (section === 'elements') {
-    const elements = ['AGNI', 'VAYU', 'JALA', 'AKASHA'];
+    const els = ['AGNI', 'VAYU', 'JALA', 'AKASHA'];
     return (
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 500 }}>
@@ -301,14 +319,14 @@ function ComparisonTable({ candidates, section }) {
             </tr>
           </thead>
           <tbody>
-            {elements.map(el => {
+            {els.map(el => {
               const meta = ELEMENT_META[el];
               const scores = candidates.map(c => c.tri_nature?.elements?.[el] || 0);
               const max = Math.max(...scores);
               return (
                 <tr key={el} style={{ background: '#fff' }}>
                   <td style={{ padding: '8px 12px', borderBottom: '1px solid #f0f2f7', position: 'sticky', left: 0, background: '#fff', zIndex: 1 }}>
-                    <span style={{ fontWeight: 600, color: meta?.color }}>{meta?.icon} {meta?.label}</span>
+                    <span style={{ fontWeight: 600, color: meta.color }}>{meta.label}</span>
                   </td>
                   {candidates.map(c => {
                     const s = c.tri_nature?.elements?.[el] || 0;
@@ -322,13 +340,12 @@ function ComparisonTable({ candidates, section }) {
                 </tr>
               );
             })}
-            {/* Dominant Element Row */}
             <tr style={{ background: '#f8fafc' }}>
               <td style={{ padding: '8px 12px', borderBottom: '1px solid #f0f2f7', fontWeight: 600, position: 'sticky', left: 0, background: '#f8fafc', zIndex: 1 }}>Dominant</td>
               {candidates.map(c => (
                 <td key={c.id} style={{ textAlign: 'center', padding: '8px 12px', borderBottom: '1px solid #f0f2f7' }}>
                   <Tag color={ELEMENT_META[c.tri_nature?.dominantElement]?.color} style={{ margin: 0, fontSize: 11 }}>
-                    {ELEMENT_META[c.tri_nature?.dominantElement]?.label}
+                    {ELEMENT_META[c.tri_nature?.dominantElement]?.label || '—'}
                   </Tag>
                 </td>
               ))}
@@ -341,6 +358,7 @@ function ComparisonTable({ candidates, section }) {
 
   if (section === 'categories') {
     const catKeys = Object.keys(candidates[0]?.tri_nature?.categories || {});
+    if (!catKeys.length) return <Empty description="No category data" />;
     return (
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 500 }}>
@@ -435,13 +453,15 @@ export default function InsightsPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [candidates, setCandidates] = useState([]);
-  const [summary, setSummary] = useState({ total: 0, evaluated: 0, companies: [], jds: [] });
+  const [summary, setSummary] = useState({ total: 0, evaluated: 0 });
   const [jds, setJds] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [jdFilter, setJdFilter] = useState(null);
   const [companyFilter, setCompanyFilter] = useState(null);
   const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState('desc');
+  const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState('grid');
   const [selectedIds, setSelectedIds] = useState([]);
   const [compareOpen, setCompareOpen] = useState(false);
   const [compareData, setCompareData] = useState(null);
@@ -486,8 +506,7 @@ export default function InsightsPage() {
   }
 
   function selectAll() {
-    const evalIds = candidates.filter(c => c.hasProfile).map(c => c.id);
-    setSelectedIds(evalIds);
+    setSelectedIds(candidates.filter(c => c.hasProfile).map(c => c.id));
   }
 
   async function openCompare() {
@@ -502,6 +521,14 @@ export default function InsightsPage() {
     }
     setCompareLoading(false);
   }
+
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return candidates;
+    return candidates.filter(c =>
+      c.name.toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q)
+    );
+  }, [candidates, search]);
 
   const sortOptions = [
     { label: 'Name', value: 'name' },
@@ -521,61 +548,128 @@ export default function InsightsPage() {
     { key: 'triguna', label: 'Energy Modes' },
   ];
 
+  const profileCount = candidates.filter(c => c.tri_nature).length;
+
   return (
-    <div style={{ padding: '0 24px 24px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+    <div className="insights-view" style={{ padding: '0 24px 24px' }}>
+      <div className="page-head">
         <div>
-          <Title level={3} style={{ margin: 0, fontWeight: 700, color: '#1c2333' }}>Inner Intelligence</Title>
-          <Text style={{ color: '#8892a8', fontSize: 13 }}>Full behavioral profile — 6 categories, 4 elements, 21 parameters, plus fit signals</Text>
+          <Title level={3} style={{ margin: 0, fontWeight: 700, color: '#1B2330' }}>Behavioral Reflection</Title>
+          <div className="sub">
+            <b>{summary.total || candidates.length}</b> candidates &middot;{' '}
+            <b>{summary.evaluated}</b> completed &middot; <b>{profileCount}</b> profiles
+          </div>
         </div>
-        <Space>
-          <Tag color="purple" style={{ fontSize: 12, padding: '2px 10px' }}>Total: {summary.total}</Tag>
-          <Tag color="green" style={{ fontSize: 12, padding: '2px 10px' }}>Evaluated: {summary.evaluated}</Tag>
-        </Space>
       </div>
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <Select placeholder="All JDs" allowClear style={{ minWidth: 200 }} value={jdFilter} onChange={setJdFilter} options={jds.map(j => ({ label: j.title, value: j.id }))} />
-        <Select placeholder="All Companies" allowClear style={{ minWidth: 180 }} value={companyFilter} onChange={setCompanyFilter} options={companies.map(c => ({ label: c.client_name, value: c.id }))} />
-        <Select placeholder="Sort by" style={{ minWidth: 140 }} value={sortBy} onChange={setSortBy} options={sortOptions} />
-        <Button
-          icon={<SwapOutlined style={{ transform: sortOrder === 'asc' ? 'rotate(180deg)' : undefined }} />}
-          onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
-          title={sortOrder === 'desc' ? 'Highest first' : 'Lowest first'}
+      <div className="filter-bar">
+        <div className="search-box">
+          <SearchOutlined />
+          <input
+            type="text"
+            placeholder="Search by candidate name…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+        <Select
+          placeholder="All JDs"
+          allowClear
+          style={{ minWidth: 180 }}
+          size="middle"
+          value={jdFilter}
+          onChange={setJdFilter}
+          options={jds.map(j => ({ label: j.title, value: j.id }))}
         />
-        <Button icon={<ReloadOutlined />} onClick={loadData}>Refresh</Button>
+        <Select
+          placeholder="All Companies"
+          allowClear
+          style={{ minWidth: 160 }}
+          size="middle"
+          value={companyFilter}
+          onChange={setCompanyFilter}
+          options={companies.map(c => ({ label: c.client_name, value: c.id }))}
+        />
+        <Select
+          placeholder="Sort by"
+          style={{ minWidth: 130 }}
+          size="middle"
+          value={sortBy}
+          onChange={setSortBy}
+          options={sortOptions}
+        />
+        <button
+          className="bar-btn"
+          title={sortOrder === 'desc' ? 'Highest first' : 'Lowest first'}
+          onClick={() => setSortOrder(prev => (prev === 'desc' ? 'asc' : 'desc'))}
+        >
+          <SwapOutlined style={{ transform: sortOrder === 'asc' ? 'rotate(180deg)' : undefined }} />
+        </button>
+        <button className="bar-btn" onClick={loadData}><ReloadOutlined /> Refresh</button>
         <div style={{ flex: 1 }} />
-        <Button onClick={selectAll} style={{ fontSize: 12 }}>Select All Evaluated</Button>
+        <button className="bar-btn" onClick={selectAll}>Select evaluated</button>
         {selectedIds.length > 0 && (
-          <Tag closable onClose={() => setSelectedIds([])} style={{ fontSize: 12 }}>{selectedIds.length} selected</Tag>
+          <Tag closable onClose={() => setSelectedIds([])} style={{ fontSize: 12 }}>
+            {selectedIds.length} selected
+          </Tag>
         )}
-        <Button type="primary" icon={<SwapOutlined />} disabled={selectedIds.length < 2} onClick={openCompare} style={{ background: '#6366f1', borderColor: '#6366f1' }}>
+        <Button
+          type="primary"
+          icon={<SwapOutlined />}
+          disabled={selectedIds.length < 2}
+          onClick={openCompare}
+          style={{ background: '#33436B', borderColor: '#33436B' }}
+        >
           Compare ({selectedIds.length})
         </Button>
+        <div className="view-toggle">
+          <button
+            className={viewMode === 'grid' ? 'active' : ''}
+            title="Grid view"
+            onClick={() => setViewMode('grid')}
+          >
+            <AppstoreOutlined />
+          </button>
+          <button
+            className={viewMode === 'list' ? 'active' : ''}
+            title="List view"
+            onClick={() => setViewMode('list')}
+          >
+            <UnorderedListOutlined />
+          </button>
+        </div>
       </div>
 
-      <div style={{ padding: '8px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, marginBottom: 16, fontSize: 12, color: '#92400e' }}>
-        <WarningOutlined style={{ marginRight: 6 }} />
+      <div style={{ padding: '8px 14px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, marginBottom: 16, fontSize: 12, color: '#92400E' }}>
         Reflection, not a prediction. These are mathematical summaries of numerology data — not hiring signals.
+        Not used directly in Candidate Fit or Joining Probability.
       </div>
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: 60 }}><Spin size="large" /></div>
-      ) : candidates.length === 0 ? (
+      ) : visible.length === 0 ? (
         <Empty description="No candidates found" />
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 14 }}>
-          {candidates.map(c => (
-            <CandidateCard key={c.id} c={c} selected={selectedIds.includes(c.id)} onToggle={toggleSelect} onView={(id) => navigate(`/scores/${id}`)} />
+        <div className={`ir-grid${viewMode === 'list' ? ' list-mode' : ''}`}>
+          {visible.map(c => (
+            <CandidateCard
+              key={c.id}
+              c={c}
+              selected={selectedIds.includes(c.id)}
+              onToggle={toggleSelect}
+              onView={(id) => navigate(`/scores/${id}`)}
+              onViewReport={(id) => navigate(`/scores/${id}?tab=inner&report=1`)}
+              onCapability={(id) => navigate(`/scores/${id}/capability`)}
+            />
           ))}
         </div>
       )}
 
       <Modal
         title={
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontWeight: 700 }}>Comparison — Full Behavioral Profile ({compareData ? compareData.length : 0} candidates)</span>
-          </div>
+          <span style={{ fontWeight: 700 }}>
+            Comparison — Inner Intelligence ({compareData ? compareData.length : 0} candidates)
+          </span>
         }
         open={compareOpen}
         onCancel={() => { setCompareOpen(false); setCompareData(null); }}
@@ -583,17 +677,21 @@ export default function InsightsPage() {
         width={1000}
         styles={{ body: { padding: '16px 24px' } }}
       >
-        <div style={{ padding: '6px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, marginBottom: 12, fontSize: 11, color: '#92400e' }}>
+        <div style={{ padding: '6px 12px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 6, marginBottom: 12, fontSize: 11, color: '#92400E' }}>
           Numerology comparison only — not an employment suitability ranking.
         </div>
         {compareLoading ? (
           <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
         ) : compareData ? (
-          <Tabs activeKey={compareTab} onChange={setCompareTab} items={compareTabs.map(t => ({
-            key: t.key,
-            label: t.label,
-            children: <ComparisonTable candidates={compareData} section={t.key} />,
-          }))} />
+          <Tabs
+            activeKey={compareTab}
+            onChange={setCompareTab}
+            items={compareTabs.map(t => ({
+              key: t.key,
+              label: t.label,
+              children: <ComparisonTable candidates={compareData} section={t.key} />,
+            }))}
+          />
         ) : null}
       </Modal>
     </div>

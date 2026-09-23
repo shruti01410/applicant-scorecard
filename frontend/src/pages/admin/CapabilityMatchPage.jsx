@@ -3,20 +3,10 @@ import { Card, Tag, Typography, Progress, Spin, Alert, Button, Space } from 'ant
 import { Link, useParams } from 'react-router-dom';
 import { CheckCircleOutlined, WarningOutlined, FileTextOutlined, TagsOutlined } from '@ant-design/icons';
 import { api } from '../../services/api';
+import { scoreColor } from '../../scoreStatus';
+import RequirementBreakdown from '../../components/RequirementBreakdown';
 
 const { Title, Text, Paragraph } = Typography;
-
-const CAT_META = {
-  technical: { label: 'Technical Skills', color: '#2563eb' },
-  tools: { label: 'Tools & Platforms', color: '#4f46e5' },
-  soft: { label: 'Soft Skills', color: '#16a34a' },
-  domain: { label: 'Domain & Industry', color: '#7c3aed' },
-  education: { label: 'Education', color: '#d97706' },
-  experience: { label: 'Experience', color: '#ea580c' },
-  certificates: { label: 'Certifications', color: '#0891b2' },
-  responsibilities: { label: 'Responsibilities', color: '#475569' },
-  other: { label: 'Other Requirements', color: '#78716c' },
-};
 
 function StatusChip({ item, isPreferred }) {
   const status = item.status === 'match' ? 'match' : 'missing';
@@ -61,29 +51,35 @@ export default function CapabilityMatchPage() {
 
   const total = (data.matched?.length||0) + (data.missing?.length||0);
   const overall = data.overall || {};
+  const requirements = data.requirements || [];
   return (
     <div style={{ maxWidth:960, margin:'0 auto' }}>
       <Link to={`/scores/${id}`}><Button size="small" style={{ marginBottom:12 }}>← Back to Scorecard — {sc?.applicant_name || `Candidate ${id}`}</Button></Link>
       <Card style={{ borderRadius:12 }}>
-        <Title level={4} style={{ margin:0 }}><FileTextOutlined /> Capability Match — JD ↔ Resume {jdLink}</Title>
-        <Text type="secondary" style={{ fontSize:13 }}>Structured extraction — skills, tools, soft skills, domain, education, certifications & experience, split into Required and Preferred. No external API. The keyword set shown is the edited one (JD Intelligence).</Text>
+        <Title level={4} style={{ margin:0 }}><FileTextOutlined /> Candidate Evaluation — JD ↔ Resume {jdLink}</Title>
+        <Text type="secondary" style={{ fontSize:13 }}>Structured requirement model — technical, functional, responsibilities, experience, domain, education, certifications & preferred, each with priority and evidence strength. No external API. The keyword set shown is the edited one (JD Intelligence).</Text>
         <div style={{ display:'flex', alignItems:'center', gap:24, marginTop:16, flexWrap:'wrap' }}>
-          <Progress type="circle" size={96} percent={data.pct} strokeColor={data.pct>=70?'#16a34a':data.pct>=40?'#f59e0b':'#ef4444'} format={()=> <span style={{ fontSize:22, fontWeight:800 }}>{data.pct}%</span>} />
+          <Progress type="circle" size={96} percent={data.pct} strokeColor={scoreColor(data.pct)} format={()=> <span style={{ fontSize:22, fontWeight:800 }}>{data.pct}%</span>} />
           <div style={{ flex:1, minWidth:240 }}>
-            <Text strong style={{ fontSize:15 }}>{data.pct}% of required requirements met in resume</Text>
+            <Text strong style={{ fontSize:15 }}>Candidate Evaluation — {data.pct}% (weighted across all JD requirements)</Text>
             <Text type="secondary" style={{ display:'block', fontSize:13, marginTop:4 }}>
               {data.matched.length} of {total} required matched ({overall.preferredMatched ?? 0} of {(overall.preferredMatched ?? 0) + (overall.preferredMissing ?? 0)} preferred)
             </Text>
-            <div style={{ marginTop:8, height:8, background:'#e2e8f0', borderRadius:99, overflow:'hidden' }}><div style={{ width:`${data.pct}%`, height:'100%', background: data.pct>=70?'#16a34a':data.pct>=40?'#f59e0b':'#ef4444', borderRadius:99 }} /></div>
+            <div style={{ marginTop:8, height:8, background:'#e2e8f0', borderRadius:99, overflow:'hidden' }}><div style={{ width:`${data.pct}%`, height:'100%', background: scoreColor(data.pct), borderRadius:99 }} /></div>
+            <Text type="secondary" style={{ display:'block', fontSize:12, marginTop:6 }}>
+              Must-haves weigh more than nice-to-haves; missing evidence lowers the score proportionally. Explainable per requirement below.
+            </Text>
           </div>
         </div>
       </Card>
 
-      {data.categories && Object.keys(data.categories).length>0 && (
+      <RequirementBreakdown requirements={requirements} weighted={data.weighted} title="Requirement Breakdown" />
+
+      {requirements.length === 0 && data.categories && Object.keys(data.categories).length>0 && (
         <Card size="small" title="Breakdown by category — Required ✓ / ✕, Preferred ◔" style={{ marginTop:16 }}>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px,1fr))', gap:12 }}>
             {Object.entries(data.categories).map(([cat, d])=>{
-              const meta = CAT_META[cat] || { label: d.title || cat, color: '#f59e0b' };
+              const meta = { label: d.title || cat, color: '#f59e0b' };
               const reqTotal = d.required.length;
               const reqMatched = d.matched.length;
               const items = (d.detail && d.detail.length) ? d.detail : [];
@@ -113,13 +109,17 @@ export default function CapabilityMatchPage() {
         </Card>
       )}
 
-      <Card size="small" title={<span><CheckCircleOutlined style={{ color:'#16a34a', marginRight:6 }}/>Green Flags — Matched ({data.matched.length})</span>} style={{ marginTop:16, borderLeft:'4px solid #16a34a' }}>
-        {data.matched.length ? <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>{data.matched.map(k=> <Tag key={k} color="green" style={{ fontSize:13, padding:'4px 10px', borderRadius:99 }}>{k}</Tag>)}</div> : <Text type="secondary">No hiring signals matched — resume may be missing JD requirements</Text>}
-      </Card>
+      {requirements.length === 0 && (
+        <>
+          <Card size="small" title={<span><CheckCircleOutlined style={{ color:'#16a34a', marginRight:6 }}/>Met — Requirements satisfied ({data.matched.length})</span>} style={{ marginTop:16, borderLeft:'4px solid #16a34a' }}>
+            {data.matched.length ? <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>{data.matched.map(k=> <Tag key={k} color="green" style={{ fontSize:13, padding:'4px 10px', borderRadius:99 }}>{k}</Tag>)}</div> : <Text type="secondary">No requirements met — resume may be missing JD requirements</Text>}
+          </Card>
 
-      <Card size="small" title={<span><WarningOutlined style={{ color:'#ef4444', marginRight:6 }}/>Red Flags — Missing ({data.missing.length})</span>} style={{ marginTop:16, borderLeft:'4px solid #ef4444' }}>
-        {data.missing.length ? <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>{data.missing.map(k=> <Tag key={k} color="red" style={{ fontSize:13, padding:'4px 10px', borderRadius:99 }}>{k}</Tag>)}</div> : <Text type="secondary" style={{ color:'#16a34a' }}>All JD hiring signals found in resume — no red flags</Text>}
-      </Card>
+          <Card size="small" title={<span><WarningOutlined style={{ color:'#ef4444', marginRight:6 }}/>Missing — Not yet evidenced ({data.missing.length})</span>} style={{ marginTop:16, borderLeft:'4px solid #ef4444' }}>
+            {data.missing.length ? <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>{data.missing.map(k=> <Tag key={k} color="red" style={{ fontSize:13, padding:'4px 10px', borderRadius:99 }}>{k}</Tag>)}</div> : <Text type="secondary" style={{ color:'#16a34a' }}>All JD requirements evidenced in resume — no gaps</Text>}
+          </Card>
+        </>
+      )}
 
       {data.flags && data.flags.length>0 && (
         <Card size="small" title={<span><WarningOutlined style={{ color:'#b91c1c', marginRight:6 }}/>Resume Integrity — Red Flags ({data.flags.length})</span>} style={{ marginTop:16, borderLeft:'4px solid #b91c1c', background:'#fef2f2' }}>

@@ -43,7 +43,7 @@ export default function FilterPanel({ jds, onFilter, onClear }) {
           <Select size="small" value={filters.sort} onChange={v => updateFilter('sort', v)} style={{ width: '100%' }}>
             <Option value="id">Recently Added</Option>
             <Option value="overallScore">Overall Score</Option>
-            <Option value="jdMatch">JD Match %</Option>
+            <Option value="jdMatch">Evaluation %</Option>
             <Option value="name">Candidate Name</Option>
           </Select>
         </div>

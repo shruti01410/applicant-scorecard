@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
 import { api } from "../services/api";
+import { scoreColor } from "../scoreStatus";
 
-function scoreColor(s) {
-  if (s >= 4) return "#16a34a";
-  if (s === 3) return "#f5a623";
-  if (s <= 2 && s > 0) return "#ef4444";
-  return "#cbd5e1";
+function scorePillColor(s) {
+  if (s == null || s <= 0) return "#cbd5e1";
+  return scoreColor(s);
 }
 
 export default function CompareCandidates({ candidateIds, onClose }) {
@@ -195,7 +194,7 @@ export default function CompareCandidates({ candidateIds, onClose }) {
               ))}
             </tr>
 
-            {/* JD Match Row */}
+            {/* Candidate Evaluation Row */}
             <tr>
               <td
                 style={{
@@ -209,7 +208,7 @@ export default function CompareCandidates({ candidateIds, onClose }) {
                   zIndex: 1,
                 }}
               >
-                JD Match
+                Candidate Evaluation
               </td>
               {data.map((c) => (
                 <td
@@ -287,7 +286,7 @@ export default function CompareCandidates({ candidateIds, onClose }) {
                             height: 28,
                             lineHeight: "28px",
                             borderRadius: 14,
-                            background: scoreColor(s),
+                            background: scorePillColor(s),
                             color: s > 0 ? "#fff" : "#cbd5e1",
                             fontWeight: 700,
                             fontSize: 13,
@@ -310,8 +309,8 @@ export default function CompareCandidates({ candidateIds, onClose }) {
         <h4 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700, color: '#1c2333' }}>Strengths & Gaps</h4>
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${data.length}, 1fr)`, gap: 16 }}>
           {data.map((c) => {
-            const highScores = (c.scores || []).filter(s => s.score >= 4).map(s => s.name);
-            const lowScores = (c.scores || []).filter(s => s.score <= 2 && s.score > 0).map(s => s.name);
+            const highScores = (c.scores || []).filter(s => s.score >= 70).map(s => s.name);
+            const lowScores = (c.scores || []).filter(s => s.score > 0 && s.score < 30).map(s => s.name);
             return (
               <div key={c.id} style={{ background: '#fff', borderRadius: 6, padding: 12, border: '1px solid #e2e8f0' }}>
                 <div style={{ fontWeight: 700, fontSize: 13, color: '#1c2333', marginBottom: 8 }}>{c.name || 'Unknown'}</div>

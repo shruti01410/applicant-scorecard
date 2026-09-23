@@ -11,6 +11,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleEnabled, setGoogleEnabled] = useState(false);
+  const [logoFailed, setLogoFailed] = useState(false);
 
   useEffect(() => {
     import('../services/firebase')
@@ -36,7 +37,7 @@ export default function LoginPage() {
     setGoogleLoading(true);
     setError('');
     try {
-      const { firebaseLoginAvailable, signInWithGoogle } = await import('../services/firebase');
+      const { firebaseLoginAvailable, signInWithGoogle, friendlyFirebaseError } = await import('../services/firebase');
       if (!(await firebaseLoginAvailable())) {
         setError('Google login is not enabled for this deployment yet.');
         return;
@@ -45,7 +46,7 @@ export default function LoginPage() {
       const userData = await loginWithGoogle(idToken);
       navigate(userData.role === 'admin' ? '/' : '/');
     } catch (e) {
-      setError(e.message || 'Google sign-in failed. Please try again.');
+      setError(friendlyFirebaseError(e));
     } finally {
       setGoogleLoading(false);
     }
@@ -55,9 +56,13 @@ export default function LoginPage() {
     <div className="login-bg">
       <div className="login-card">
         <div className="login-logo">
-          <div className="logo-icon">📋</div>
-          <Typography.Title level={3} style={{ margin: '10px 0 4px', color:'#1e293b', fontWeight:700, textAlign:'center' }}>Applicant Scorecard</Typography.Title>
-          <Typography.Text type="secondary" style={{ display:'block', textAlign:'center', fontSize:14 }}>Sign in to your account</Typography.Text>
+          {logoFailed ? (
+            <div className="logo-icon">📋</div>
+          ) : (
+            <img src="/humsee-logo.png" alt="Humsee Score logo" className="login-logo-img" onError={() => setLogoFailed(true)} />
+          )}
+          <Typography.Title level={3} style={{ margin: '10px 0 4px', color:'#1e293b', fontWeight:700, textAlign:'center' }}>Humsee Score</Typography.Title>
+          <Typography.Text type="secondary" style={{ display:'block', textAlign:'center', fontSize:14 }}>Sign in to your organization account</Typography.Text>
         </div>
         {error && <Alert type="error" description={error} showIcon style={{ marginBottom: 16 }} />}
         {googleEnabled && (
@@ -79,13 +84,24 @@ export default function LoginPage() {
           <Form.Item name="username" label={<span style={{ fontWeight:600, fontSize:13, color:'#374151' }}>Username</span>} rules={[{ required: true, message: 'Enter username' }]} style={{ marginBottom: 12 }}>
             <Input placeholder="Enter username" size="large" style={{ borderRadius:8 }} />
           </Form.Item>
-          <Form.Item name="password" label={<span style={{ fontWeight:600, fontSize:13, color:'#374151' }}>Password</span>} rules={[{ required: true, message: 'Enter password' }]} style={{ marginBottom: 20 }}>
+          <Form.Item name="password" label={<span style={{ fontWeight:600, fontSize:13, color:'#374151' }}>Password</span>} rules={[{ required: true, message: 'Enter password' }]} style={{ marginBottom: 12 }}>
             <Input.Password placeholder="Enter password" size="large" style={{ borderRadius:8 }} />
           </Form.Item>
+          <div style={{ textAlign: 'right', marginBottom: 16 }}>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              Forgot password? Contact your administrator.
+            </Typography.Text>
+          </div>
           <Button className="btn-primary full-width" htmlType="submit" block size="large" loading={loading} style={{ borderRadius:8, height:44, fontWeight:700 }}>
             Sign In
           </Button>
         </Form>
+
+        <div style={{ textAlign: 'center', marginTop: 18 }}>
+          <Typography.Text type="secondary" style={{ fontSize: 12, color: '#94a3b8' }}>
+            Don&apos;t have access? Contact your organization administrator.
+          </Typography.Text>
+        </div>
       </div>
     </div>
   );

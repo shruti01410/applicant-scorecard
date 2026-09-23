@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const db = require('./database');
+const { jwtSecret } = require('./security');
 
 const GMAIL_COMPOSE_SCOPE = 'https://www.googleapis.com/auth/gmail.compose';
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -10,8 +11,8 @@ function getConfig() {
   return {
     clientId: process.env.GMAIL_CLIENT_ID || '',
     clientSecret: process.env.GMAIL_CLIENT_SECRET || '',
-    tokenKey: process.env.GMAIL_TOKEN_KEY || process.env.JWT_SECRET || 'dev-secret',
-    stateSecret: process.env.GMAIL_STATE_SECRET || process.env.JWT_SECRET || 'dev-secret',
+    tokenKey: process.env.GMAIL_TOKEN_KEY || process.env.JWT_SECRET || jwtSecret(),
+    stateSecret: process.env.GMAIL_STATE_SECRET || process.env.JWT_SECRET || jwtSecret(),
   };
 }
 

@@ -15,7 +15,7 @@ export default function InterviewPrepCard({ prep, maskedTraits }) {
       )}
       {maskedTraits && maskedTraits.length > 0 && (
         <div style={{ marginTop: 12 }}>
-          <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>Masked Traits — Interview Scenarios</Text>
+          <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>Pressure Traits — Interview Scenarios</Text>
           <Text style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 8 }}>
             These traits shift under pressure — observe them directly in the interview.
           </Text>

@@ -432,9 +432,10 @@ function IntroScreen({ onStart }) {
       <p style={{
         maxWidth: 460, margin: "0 auto 36px", color: "#ffffff !important", fontSize: 15.5, lineHeight: 1.6,
       }}>
-        Inner Intelligence reads a candidate's name, date of birth, and resume, then maps
+        Behavioral Reflection reads a candidate's name, date of birth, and resume, then maps
         21 behavioral parameters across four elements — how they drive, think, connect, and
         hold steady under pressure — grouped into 6 meaningful categories.
+        Reflection, not a prediction — and never used directly in Candidate Fit or Joining Probability.
       </p>
 
       <button onClick={onStart} style={{
@@ -554,7 +555,7 @@ function LoadingScreen({ onDone }) {
   const messages = [
     "Reading name and date of birth…",
     "Building the 9-number base…",
-    "Mapping the 21 behavioral parameters…",
+    "Mapping the behavioral parameters…",
     "Grouping into 6 categories…",
     "Assembling the signature…",
   ];
@@ -645,8 +646,8 @@ function CardDetail({ card }) {
             SIX MEANINGFUL CATEGORIES — SCORED 0–100
           </div>
           <div style={{ fontSize: 12.5, color: "#8892a8", marginBottom: 16, lineHeight: 1.55 }}>
-            Expression, Attitude, Unmasked, Personality, and Soul Urge are scored from behavioral parameters.
-            Masked traits (Ambition, Competitive Drive, Dominance, Ego) are interview-only — they shift with context
+            Expression, Interaction Style, Work Character, and Personality are scored from behavioral parameters.
+            Inner Drivers is derived from core numbers; Pressure Traits (Ambition, Competitive Drive, Dominance, Ego) are interview-only — they shift with context
             and get scenario prompts instead of flat resume scores.
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 18 }}>
@@ -827,7 +828,7 @@ function CardDetail({ card }) {
                 {card.company.summary || "This candidate's profile partially echoes the company's character."}
               </p>
               <div style={{ fontSize: 12, color: "#8892a8" }}>
-                Set a company profile (name, founder, founded year) to sharpen this reading further.
+                Add more company profile detail (name, founded year, brand) to sharpen this reading further.
               </div>
             </>
           ) : (
@@ -836,7 +837,7 @@ function CardDetail({ card }) {
                 No company numerology profile is set up yet, so this reading is on hold.
               </p>
               <div style={{ fontSize: 12, color: "#8892a8" }}>
-                Set a company profile (name, founder, founded year) to compare the candidate's
+                Set a company profile (name, founded year, brand) to compare the candidate's
                 rhythm against an organisation's founding character.
               </div>
             </>
@@ -947,7 +948,7 @@ function ReportScreen({ name, hasDob, scoreValue, cards, onBack, onUnlock, emplo
       <div style={{ padding: "0 20px", background: "#fff", borderBottom: "1px solid #e7eaf3" }}>
         <div style={{ display: "flex", gap: 22, fontSize: 13.5 }}>
           <div style={{ padding: "12px 0", color: "#8892a8" }}>Scorecard</div>
-          <div style={{ padding: "12px 0", color: "#3d5df0", fontWeight: 600, borderBottom: "2px solid #3d5df0" }}>Inner Intelligence</div>
+          <div style={{ padding: "12px 0", color: "#3d5df0", fontWeight: 600, borderBottom: "2px solid #3d5df0" }}>Behavioral Reflection</div>
         </div>
       </div>
 
@@ -967,7 +968,7 @@ function ReportScreen({ name, hasDob, scoreValue, cards, onBack, onUnlock, emplo
         }}>
           <div>
             <div style={{ fontSize: 18, fontWeight: 700, color: "#1c2333", marginBottom: 4 }}>{name}</div>
-            <div style={{ fontSize: 13, color: "#8892a8" }}>Full behavioral profile — 6 categories, 4 elements, 21 parameters, plus fit signals.</div>
+            <div style={{ fontSize: 13, color: "#8892a8" }}>Full behavioral profile — 6 categories, 4 elements, 6 deep parameters, plus fit signals.</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <div style={{
@@ -1017,7 +1018,7 @@ function ReportScreen({ name, hasDob, scoreValue, cards, onBack, onUnlock, emplo
    Root — wired to live backend data
 --------------------------------------------------------- */
 
-export default function ExactInnerIntelligence({ employeeId }) {
+export default function ExactInnerIntelligence({ employeeId, openReport }) {
   const [step, setStep] = useState("intro");
   const [name, setName] = useState("");
   const [dob, setDob] = useState("");
@@ -1042,7 +1043,7 @@ export default function ExactInnerIntelligence({ employeeId }) {
       const sc = await api.get(`/api/admin/employees/${employeeId}/scorecard`).catch(() => null);
       const cand = sc?.scorecard || null;
       const candName = cand?.applicant_name || "";
-      setName((prev) => prev || candName);
+      if (candName) setName(candName);
 
       const cn = await api.get(`/api/admin/employees/${employeeId}/tri-nature/core-numbers`).catch(() => null);
       const hasProfile = !!(cn && cn.hasProfile && cn.dob);
@@ -1096,6 +1097,18 @@ export default function ExactInnerIntelligence({ employeeId }) {
         basis: p.basis,
       })));
 
+      // Same formula as Insights card: mean of deep params (0-5) → percent
+      if (params.length) {
+        const avg5 = Math.round(params.reduce((a, p) => a + (p.score || 0), 0) / params.length * 10) / 10;
+        setScoreValue(Math.round((avg5 / 5) * 100));
+      } else {
+        setScoreValue(0);
+      }
+
+      if (openReport) {
+        setStep(hasProfile ? "report" : "intro");
+      }
+
       const conc = (o && o.conclusion) || null;
       setConclusion(conc);
       setPrep(p || null);
@@ -1110,28 +1123,34 @@ export default function ExactInnerIntelligence({ employeeId }) {
           dims: dims.map((d) => {
             const diff = d.diff != null ? d.diff : 2;
             const value = Math.max(15, Math.min(85, Math.round(78 - diff * 12)));
-            return { label: `${d.dimension.replace(" Alignment", "")} match`, value, color: "#3d5df0" };
+            return { label: d.dimension, value, color: "#3d5df0" };
           }).map((d, i) => ({ ...d, color: ["#3d5df0", "#5da88f", "#c7607a"][i % 3] })),
         });
       } else {
         setCompany(null);
-      }
-
-      const wPct = cand && cand.weighted_pct != null ? cand.weighted_pct : null;
-      if (wPct != null) {
-        setScoreValue(wPct);
-      } else if (t && t.hasProfile && t.elements) {
-        const vals = Object.values(t.elements).filter((v) => typeof v === "number");
-        setScoreValue(vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : 0);
-      } else {
-        setScoreValue(0);
       }
     } catch (e) {
       if (String(e.message).toLowerCase().includes("not enabled")) setGated(true);
     }
   }
 
-  useEffect(() => { loadAll(); }, [employeeId]);
+  useEffect(() => {
+    setName("");
+    setDob("");
+    setHasDob(false);
+    setElements([]);
+    setSig(null);
+    setTriguna([]);
+    setDeeper([]);
+    setConclusion(null);
+    setPrep(null);
+    setCompany(null);
+    setScoreValue(0);
+    setCategories(null);
+    setMaskedTraits([]);
+    setStep(openReport ? "report" : "intro");
+    loadAll();
+  }, [employeeId, openReport]);
 
   async function handleContinue() {
     if (!name.trim()) return;
@@ -1156,7 +1175,7 @@ export default function ExactInnerIntelligence({ employeeId }) {
   if (gated) {
     return (
       <div style={{ maxWidth: 480, margin: "40px auto", textAlign: "center", color: "#5c6480", fontFamily: "Inter, sans-serif", fontSize: 13 }}>
-        Inner Intelligence is not enabled. Set ENABLE_INNER_INTELLIGENCE=true and restart the backend.
+        Behavioral Reflection is not enabled. Set ENABLE_INNER_INTELLIGENCE=true and restart the backend.
       </div>
     );
   }
@@ -1175,7 +1194,7 @@ export default function ExactInnerIntelligence({ employeeId }) {
   const cards = [
     {
       id: "drivers", icon: Gem, title: "Behavioral Drivers",
-      desc: "4 elements · 21 parameters, with strengths and edges, scored and explained.",
+      desc: "4 elements · 6 categories · 6 deep parameters, with strengths and edges, scored and explained.",
       meta: `${elements.length} elements`, gated: true, elements,
     },
     {
@@ -1193,13 +1212,13 @@ export default function ExactInnerIntelligence({ employeeId }) {
     },
     {
       id: "categories", icon: Sparkles, title: "6 Categories",
-      desc: "Expression, Attitude, Unmasked, Personality, Soul Urge — plus Masked traits for interview.",
+      desc: "Expression, Interaction Style, Work Character, Personality, Inner Drivers — plus Pressure Traits for interview.",
       meta: "6 lenses", gated: true, categories, maskedTraits,
     },
     {
       id: "deeper", icon: Sparkles, title: "Deeper Parameters",
       desc: "Six additional lenses — stillness, luck, harmony, destiny, karmic balance, and intuition.",
-      meta: numoAvg ? `${numoAvg}/100 avg` : "Inner Intelligence", gated: true, deeper,
+      meta: numoAvg ? `${numoAvg}/100 avg` : "Behavioral Reflection", gated: true, deeper,
     },
     {
       id: "prep", icon: PenLine, title: "Interview Prep",
@@ -1213,8 +1232,8 @@ export default function ExactInnerIntelligence({ employeeId }) {
     {
       id: "fit", icon: Building2, title: "Company Fit",
       desc: company
-        ? `How the candidate's current profile echoes ${company.name}'s founding character.`
-        : "How this candidate's profile aligns with an organisation's founding character.",
+        ? `How the candidate's current professional profile aligns with ${company.name}'s character — trajectory and brand.`
+        : "How this candidate's professional profile aligns with an organisation's character — trajectory and brand.",
       meta: company ? company.name : "No company set", gated: false, company,
     },
   ];

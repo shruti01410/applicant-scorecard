@@ -6,7 +6,7 @@ const BASE_SECTIONS = [
     id: "sort",
     label: "Sort by",
     type: "radio",
-    options: ["Recently added", "Overall Score", "JD Match", "Name"],
+    options: ["Recently added", "Overall Score", "Evaluation", "Name"],
     defaultValue: "Recently added",
     openByDefault: true,
   },

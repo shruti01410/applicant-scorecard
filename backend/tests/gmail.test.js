@@ -338,7 +338,50 @@ test('G11. expired access tokens are refreshed, then the draft is created', asyn
   }
 });
 
-test('G12. disconnect removes the connection, and blocked-with-503 when unconfigured', async () => {
+test('G13. the OAuth callback stays public even though /api/admin routers run JWT auth', async () => {
+  const db = seededDb();
+  const dbPath = require.resolve('../database');
+  const authPath = require.resolve('../middleware/auth');
+  const gmailRoutesPath = require.resolve('../routes/gmail');
+  const gmailServicePath = require.resolve('../gmailService');
+  const saved = new Map();
+  for (const p of [dbPath, authPath, gmailRoutesPath, gmailServicePath]) saved.set(p, require.cache[p]);
+  let server;
+  try {
+    require.cache[dbPath] = { exports: db };
+    require.cache[authPath] = {
+      exports: {
+        authenticate: (req2, res, next) => res.status(401).json({ error: 'Authentication required' }),
+        requireRole: () => (req2, res, next) => next(),
+      },
+    };
+    delete require.cache[gmailRoutesPath];
+    delete require.cache[gmailServicePath];
+    const app = express();
+    app.use(express.json());
+    // mirror server.js: the public gmail router MUST be mounted before the
+    // JWT-guarded /api/admin routers, or Google's tokenless redirect hits 401.
+    app.use('/api/admin/gmail', require('../routes/gmail'));
+    const guarded = express.Router();
+    guarded.use(require('../middleware/auth').authenticate);
+    guarded.get('/anything', (req2, res) => res.json({}));
+    app.use('/api/admin', guarded);
+    server = await new Promise((resolve) => {
+      const instance = app.listen(0, '127.0.0.1', () => resolve(instance));
+    });
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/admin/gmail/oauth/callback?state=bad&code=x`, { redirect: 'manual' });
+    assert.equal(res.status, 302);
+    assert.match(res.headers.get('location') || '', /gmail=invalid_state/);
+  } finally {
+    if (server) server.closeAllConnections();
+    if (server) await new Promise((resolve) => server.close(resolve));
+    for (const [p, cached] of saved) {
+      if (cached) require.cache[p] = cached;
+      else delete require.cache[p];
+    }
+  }
+});
+  test('G12. disconnect removes the connection, and blocked-with-503 when unconfigured', async () => {
   const db = seededDb();
   await withApi(db, async (base) => {
     require('../gmailService').storeConnection({ userId: 1, accountEmail: 'recruiter@gmail.com', accessToken: 'at', refreshToken: 'rt' });

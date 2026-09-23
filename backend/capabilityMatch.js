@@ -1087,6 +1087,182 @@ function containsPhrase(text, phrase) {
   return false;
 }
 
+// ---------------------------------------------------------------
+// Requirement Model - per-requirement priority (must/important/
+// preferred/nice_to_have), evidence strength (explicit/strong
+// contextual/weak/none), status (matched/partial/missing), score and
+// explanation. The composite is a weighted score so that "must have"
+// evidence counts far more than "nice to have" mentions.
+// ---------------------------------------------------------------
+
+const ACTION_VERBS = /(built|developed|created|designed|implemented|engineered|architect(ed|ing)?|programmed|coded|led|managed|delivered|launched|optimized|optimised|automated|refactored|migrated|integrated|owned|established|improved|drove|spearheaded|handled|executed|deployed|maintained|configured|administered|monitored|operated|modelled|modeled|trained|tested|reconciled|prepared|processed|filed|recorded|posted|analyzed|analysed|computed|wrote|produced|generated|secured|streamlined|reduced|increased|supported|troubleshoot|debugged|scaled)/i;
+
+const PRIORITY_WEIGHTS = { must: 1.0, important: 0.8, preferred: 0.6, nice_to_have: 0.4 };
+const CATEGORY_WEIGHTS = {
+  technical: 1.0,
+  tools: 0.8,
+  responsibilities: 0.7,
+  experience: 0.7,
+  domain: 0.6,
+  education: 0.6,
+  certificates: 0.5,
+  soft: 0.5,
+  other: 0.3,
+};
+const PRIORITY_LABELS = { must: 'Must Have', important: 'Important', preferred: 'Preferred', nice_to_have: 'Nice to Have' };
+const STRENGTH_LABELS = { strong: 'Strong Contextual Evidence', explicit: 'Explicit Evidence', weak: 'Weak / Related Evidence', none: 'No Evidence' };
+
+function normalizedTokens(text) {
+  const rawTokens = normalize(text).split(' ');
+  const tokens = [];
+  const isBoundary = [];
+  for (const rt of rawTokens) {
+    let c = rt.replace(/\.+$/g, '');
+    c = c.replace(/\.{2,}/g, '.');
+    if (!c) continue;
+    tokens.push(c);
+    isBoundary.push(/[.;!?]+$/.test(rt));
+  }
+  return { tokens, isBoundary };
+}
+
+// Token-aware keyword match: exact or boundary-safe substring so
+// "react" does not match "reaction" but "react" is found in "react.js".
+function tokenMatchesKeyword(token, kw) {
+  if (token === kw) return true;
+  const idx = token.indexOf(kw);
+  if (idx < 0) return false;
+  if (idx > 0 && /[a-z0-9]/.test(token[idx - 1])) return false;
+  const after = token.slice(idx + kw.length);
+  if (after && /^[a-z0-9]/.test(after)) return false;
+  return true;
+}
+
+function findPhraseIndices(tokens, phrase) {
+  const words = String(phrase || '').split(' ').filter(Boolean);
+  if (!words.length) return [];
+  const starts = [];
+  for (let i = 0; i + words.length <= tokens.length; i++) {
+    let ok = true;
+    for (let j = 0; j < words.length; j++) {
+      if (!tokenMatchesKeyword(tokens[i + j], words[j])) { ok = false; break; }
+    }
+    if (ok) starts.push(i);
+  }
+  return starts;
+}
+
+// Fallback locator for tokens that glue a phrase into one token with
+// the same separators the normalizer strips (e.g. "node.js" for "node js").
+function findJoinedIndices(tokens, phrase) {
+  const joined = String(phrase || '').replace(/[\s.+\-#]/g, '');
+  if (!joined) return [];
+  const out = [];
+  tokens.forEach((t, i) => {
+    const st = String(t).replace(/[\s.+\-#]/g, '');
+    if (st === joined || t.includes(joined)) out.push(i);
+  });
+  return out;
+}
+
+function priorityFor(re) {
+  const ctx = re.context || '';
+  const normForm = re.term || re.keyword || String(re.display || '').toLowerCase();
+  const ctxNorm = ctx.replace(/[.+\-#]/g, ' ').replace(/\s+/g, ' ');
+  const nearWindow = () => {
+    const idx = ctxNorm.indexOf(String(normForm).slice(0, 24));
+    if (idx < 0) return ctxNorm;
+    return ctxNorm.slice(Math.max(0, idx - 18), Math.min(ctxNorm.length, idx + normForm.length + 18));
+  };
+  const local = nearWindow();
+  if (re.mode === 'required') {
+    if (STRONG_HINTS.test(local)) return 'must';
+    return 'important';
+  }
+  if (WEAK_HINTS.test(local)) return 'nice_to_have';
+  return 'preferred';
+}
+
+function expectedEvidenceFor(re) {
+  switch (re.category) {
+    case 'technical': return `Resume names "${re.display}" — in skills, projects, or in-context usage`;
+    case 'tools': return `Resume names "${re.display}" — in a skills or tools section`;
+    case 'responsibilities': return `Resume shows past work covering "${re.display}"`;
+    case 'soft': return `Resume demonstrates "${re.display}" through experience or projects`;
+    case 'education': return `Resume lists "${re.display}" in the qualifications/education section`;
+    case 'certificates': return `Resume lists "${re.display}" under certifications`;
+    case 'experience': return `Resume claims ${re.display} of relevant experience`;
+    case 'domain': return `Resume places background in the "${re.display}" domain`;
+    case 'other': return `Resume mentions "${re.display}"`;
+    default: return `Resume evidences "${re.display}"`;
+  }
+}
+
+function evidenceFor(re, ctx) {
+  if (re.category === 'experience' && re.years) {
+    const met = re.years.min <= 0 || (ctx.resumeMaxYears != null && ctx.resumeMaxYears >= re.years.min);
+    if (!met) {
+      return { status: 'missing', strength: 'none', evidence: [], score: 0, explanation: `Resume does not show the required ${re.display} of experience.` };
+    }
+    const ev = ctx.resumeExpEntity ? ctx.resumeExpEntity.display : null;
+    return { status: 'matched', strength: 'explicit', evidence: ev ? [ev] : [], score: 100, explanation: `Resume claims ${ev || re.display} total experience, satisfying the requirement.` };
+  }
+  const phrase = re.term || re.keyword;
+  let hits = findPhraseIndices(ctx.tokens, phrase);
+  if (hits.length === 0) hits = findJoinedIndices(ctx.tokens, phrase);
+  if (hits.length === 0) {
+    if (ctx.profile.has(re.term)) {
+      return { status: 'partial', strength: 'weak', evidence: [], score: 55, explanation: `Requirement recognized via a related term on the resume, but "${re.display}" was not found verbatim — confirm this in the interview.` };
+    }
+    return { status: 'missing', strength: 'none', evidence: [], score: 0, explanation: `Resume does not contain "${re.display}" — confirm whether the candidate qualifies before proceeding.` };
+  }
+  let strongest = 'explicit';
+  const snippets = [];
+  const seen = new Set();
+  for (const i of hits) {
+    const s = sentenceFor(ctx.tokens, ctx.ranges, i);
+    const key = s.slice(0, 80);
+    if (!seen.has(key)) { seen.add(key); snippets.push(s); }
+    if (ACTION_VERBS.test(s)) strongest = 'strong';
+  }
+  const evidence = snippets.slice(0, 2);
+  const score = strongest === 'strong' ? 100 : 85;
+  const snippet = evidence[0] ? evidence[0].slice(0, 100) + (evidence[0].length > 100 ? '…' : '') : 'the skills section';
+  const explanation = strongest === 'strong'
+    ? `Resume uses "${re.display}" in context with action verbs (${snippet}).`
+    : `Resume lists "${re.display}" explicitly (${snippet}).`;
+  return { status: 'matched', strength: strongest, evidence, score, explanation };
+}
+
+function buildRequirement(re, ctx) {
+  const ev = evidenceFor(re, ctx);
+  const priority = priorityFor(re);
+  return {
+    id: `${re.category}:${re.term || re.keyword || re.display}`,
+    requirement: re.display,
+    category: re.category,
+    categoryLabel: CATEGORY_LABELS[re.category] || re.category,
+    importance: re.mode,
+    priority,
+    priorityLabel: PRIORITY_LABELS[priority],
+    expectedEvidence: expectedEvidenceFor(re),
+    matchedEvidence: ev.evidence,
+    evidenceStrength: ev.strength,
+    evidenceStrengthLabel: STRENGTH_LABELS[ev.strength],
+    matchStatus: ev.status,
+    score: ev.score,
+    confidence: Math.round(re.confidence * 100) / 100,
+    explanation: `${ev.explanation} Priority: ${PRIORITY_LABELS[priority]}.`,
+  };
+}
+
+function weightedComposite(reqs) {
+  const weightOf = (r) => (CATEGORY_WEIGHTS[r.category] || 0.3) * (PRIORITY_WEIGHTS[r.priority] || 0.4);
+  const totalW = reqs.reduce((s, r) => s + weightOf(r), 0);
+  const score = totalW ? Math.round(reqs.reduce((s, r) => s + r.score * weightOf(r), 0) / totalW) : 0;
+  return { score, totalW };
+}
+
 function matchResumeToJD(jdText, resumeText, opts = {}) {
   const override = opts.jdKeywords && opts.jdKeywords.length ? opts.jdKeywords : null;
   let jdEntities;
@@ -1109,6 +1285,15 @@ function matchResumeToJD(jdText, resumeText, opts = {}) {
   const resumeExps = [...resumeProfile.values()].filter((e) => e.category === 'experience');
   const resumeMaxYears = resumeExps.reduce((mx, e) => Math.max(mx, claimedYears(e)), 0);
   const resumeExpEntity = resumeExps.length ? resumeExps.reduce((a, b) => (claimedYears(b) >= claimedYears(a) ? b : a)) : null;
+
+  const resumeTok = normalizedTokens(normResume);
+  const resumeCtx = {
+    tokens: resumeTok.tokens,
+    ranges: sentenceRanges(resumeTok.tokens, resumeTok.isBoundary),
+    profile: resumeProfile,
+    resumeMaxYears,
+    resumeExpEntity,
+  }
 
   const isMatched = (re) => {
     if (re.category === 'experience' && re.years) {
@@ -1173,8 +1358,33 @@ function matchResumeToJD(jdText, resumeText, opts = {}) {
     });
   }
 
+  const requirements = [...jdRequired, ...jdPreferred].map((re) => buildRequirement(re, resumeCtx));
+  const composite = weightedComposite(requirements);
+  const pct = composite.score;
   const totalRequired = matched.length + missing.length;
-  const pct = totalRequired ? Math.round((matched.length / totalRequired) * 100) : 0;
+
+  const mustResults = requirements
+    .filter((r) => r.priority === 'must' || r.priority === 'important')
+    .map((r) => ({
+      requirement: r.requirement,
+      term: r.id,
+      category: r.category,
+      met: r.matchStatus === 'matched',
+      evidence: r.matchedEvidence,
+      severity: r.priority === 'must' || r.category === 'experience' || r.category === 'education' ? 'critical' : 'important',
+      confidence: r.confidence,
+      priority: r.priority,
+      strength: r.evidenceStrength,
+      score: r.score,
+      explanation: r.explanation,
+    }));
+  const mustHave = {
+    passed: mustResults.every((r) => r.met),
+    criticalPassed: mustResults.filter((r) => r.severity === 'critical').every((r) => r.met),
+    totalRequired: mustResults.length,
+    totalMet: mustResults.filter((r) => r.met).length,
+    results: mustResults,
+  };
 
   return {
     pct,
@@ -1192,6 +1402,26 @@ function matchResumeToJD(jdText, resumeText, opts = {}) {
       preferredMissing: preferredMissing.length,
       totalRequired,
     },
+    requirements,
+    mustHave,
+    weighted: {
+      score: pct,
+      requirementCount: requirements.length,
+      formula: 'Σ(score × categoryWeight × priorityWeight) / Σ(categoryWeight × priorityWeight)',
+      byPriority: {
+        must: requirements.filter((r) => r.priority === 'must').length,
+        important: requirements.filter((r) => r.priority === 'important').length,
+        preferred: requirements.filter((r) => r.priority === 'preferred').length,
+        nice_to_have: requirements.filter((r) => r.priority === 'nice_to_have').length,
+      },
+      evidenceBreakdown: {
+        matched: requirements.filter((r) => r.matchStatus === 'matched').length,
+        partial: requirements.filter((r) => r.matchStatus === 'partial').length,
+        missing: requirements.filter((r) => r.matchStatus === 'missing').length,
+      },
+    },
+    priorityWeights: PRIORITY_WEIGHTS,
+    categoryWeights: CATEGORY_WEIGHTS,
     engine: 'structured-v2',
   };
 }

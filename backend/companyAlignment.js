@@ -9,12 +9,10 @@ function buildAlignment(profile, company) {
   const composite = compositePersonalNumber(lifePath, birth, expression);
   const founded = company.founded_number;
   const brand = company.brand_number;
-  const founder = company.founder_number;
 
   const dims = [
-    { dimension: 'Trajectory Alignment', candidateNumber: composite, companyNumber: founded, label: 'Composite vs Founded' },
-    { dimension: 'Brand Alignment', candidateNumber: expression, companyNumber: brand, label: 'Expression vs Brand' },
-    { dimension: 'Founder Alignment', candidateNumber: birth, companyNumber: founder, label: 'Birth vs Founder' },
+    { dimension: 'Trajectory Match', candidateNumber: composite, companyNumber: founded, label: 'Composite vs Founded' },
+    { dimension: 'Brand Match', candidateNumber: expression, companyNumber: brand, label: 'Expression vs Brand' },
   ].map(d => {
     const diff = d.candidateNumber != null && d.companyNumber != null ? Math.abs(d.candidateNumber - d.companyNumber) : null;
     const { tone, label } = outcomeFor(diff);

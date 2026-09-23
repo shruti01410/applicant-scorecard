@@ -7,10 +7,14 @@ const { Text, Paragraph } = Typography;
 const CATEGORY_ICONS = {
   Expression: <MessageOutlined style={{ color: '#6366f1' }} />,
   Attitude: <ThunderboltOutlined style={{ color: '#f59e0b' }} />,
+  'Interaction Style': <ThunderboltOutlined style={{ color: '#f59e0b' }} />,
   Unmasked: <UserOutlined style={{ color: '#06b6d4' }} />,
+  'Work Character': <UserOutlined style={{ color: '#06b6d4' }} />,
   Personality: <EyeOutlined style={{ color: '#8b5cf6' }} />,
   'Soul Urge': <HeartOutlined style={{ color: '#ec4899' }} />,
+  'Inner Drivers': <HeartOutlined style={{ color: '#ec4899' }} />,
   Masked: <LockOutlined style={{ color: '#eab308' }} />,
+  'Pressure Traits': <LockOutlined style={{ color: '#eab308' }} />,
 };
 
 const SCORE_COLOR = { 5: '#4F8F7D', 4: '#4F8F7D', 3: '#EDEAE3', 2: '#B97D68', 1: '#B97D68' };
@@ -18,7 +22,7 @@ const SCORE_COLOR = { 5: '#4F8F7D', 4: '#4F8F7D', 3: '#EDEAE3', 2: '#B97D68', 1:
 export default function NumoParametersCard({ params }) {
   if (!params || params.length === 0) return null;
   return (
-    <Card size="small" title={<span style={{ fontFamily: 'Fraunces, serif', color: '#EDEAE3' }}>Numo Parameters <Tag color="gold" style={{ marginLeft: 8, background: 'rgba(199,154,75,0.16)', borderColor: 'rgba(199,154,75,0.3)', color: '#C79A4B' }}>Inner Intelligence</Tag> <Tooltip title="Luck & stillness based — descriptive, not predictive. Like the rest of Inner Intelligence, these never affect the 23-parameter weighted %."><InfoCircleOutlined style={{ marginLeft: 6, color: 'rgba(237,234,227,0.5)' }} /></Tooltip></span>}>
+    <Card size="small" title={<span style={{ fontFamily: 'Fraunces, serif', color: '#EDEAE3' }}>Numo Parameters <Tag color="gold" style={{ marginLeft: 8, background: 'rgba(199,154,75,0.16)', borderColor: 'rgba(199,154,75,0.3)', color: '#C79A4B' }}>Behavioral Reflection</Tag> <Tooltip title="Luck & stillness based — descriptive, not predictive. Like the rest of Behavioral Reflection, these never affect the Pursuit Priority or Candidate Fit."><InfoCircleOutlined style={{ marginLeft: 6, color: 'rgba(237,234,227,0.5)' }} /></Tooltip></span>}>
       <Paragraph style={{ fontSize: 11, marginBottom: 12, color: 'rgba(237,234,227,0.7)' }}>
         Six numerology-derived lenses — <Text strong style={{ color: '#EDEAE3' }}>stillness, luck, harmony, destiny, karmic balance, intuition</Text>. Each is 1-5 from your Life/Birth/Personal Year vs company core. Think "weather report," not verdict.
       </Paragraph>

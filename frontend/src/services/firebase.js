@@ -66,3 +66,22 @@ export async function signInWithGoogle() {
     photoURL: result.user.photoURL,
   };
 }
+
+// Translate known Firebase auth errors into a user-friendly message. Unknown
+// codes pass the original message through unchanged.
+export function friendlyFirebaseError(error) {
+  const code = (error && (error.code || error.message)) || '';
+  if (code === 'auth/unauthorized-domain') {
+    return 'Google login is not enabled on this domain yet. Contact the administrator to add this domain to the Firebase Authorized domains list.';
+  }
+  if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+    return 'Google sign-in popup was closed before signing in. Please try again.';
+  }
+  if (code === 'auth/popup-blocked') {
+    return 'Your browser blocked the Google sign-in popup. Allow popups for this site and try again.';
+  }
+  if (code === 'auth/network-request-failed') {
+    return 'Could not reach Google to sign you in. Check your internet connection and try again.';
+  }
+  return (error && error.message) || 'Google sign-in failed. Please try again.';
+}

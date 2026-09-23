@@ -7,6 +7,8 @@ import { UploadOutlined, FileTextOutlined, StarFilled, PlusOutlined } from '@ant
 import { api } from '../../services/api';
 import { badge } from '../../scoreLabels';
 import { validateResumeFileClient } from '../../services/resumeCheck';
+import { decisionColors } from '../../sopModel';
+import { scoreColor } from '../../scoreStatus';
 import ResumeIntegrity from '../../components/ResumeIntegrity';
 import CompareCandidates from '../../components/CompareCandidates';
 import FilterPanel from '../../components/FilterPanel';
@@ -14,21 +16,25 @@ import SortFilterDrawer from '../../components/SortFilterDrawer';
 
 const { Title } = Typography;
 
-function colorFor(pct) {
-  if (pct == null) return '#94a3b8';
-  if (pct < 30) return '#ef4444';
-  if (pct < 65) return '#f59e0b';
-  if (pct < 80) return '#2563eb';
-  return '#16a34a';
-}
-function WeightedBar({ v }) {
-  if (v == null) return <span className="muted">—</span>;
-  const color = colorFor(v);
+function PursuitCol({ row }) {
+  const d = row.pursuit_priority || {};
+  const v = d.display_score;
+  if (v == null) return <span className="muted">Not scored</span>;
+  const barColor = scoreColor(v);
+  const tagColor = decisionColors[d.final_decision] || barColor;
   return (
-    <span className="score-col" style={{ display:'flex', alignItems:'center', gap:8 }}>
-      <span className="mini-bar" style={{ width:80, height:6, background:'#e2e8f0', borderRadius:99, overflow:'hidden', display:'inline-block' }}><span className="mini-fill" style={{ width: `${v}%`, backgroundColor: color, height:'100%', display:'block', borderRadius:99 }} /></span>
-      <span className="score-pct" style={{ color, fontWeight:600, fontSize:12 }}>{v}%</span>
-    </span>
+    <div>
+      <span className="score-col" style={{ display:'flex', alignItems:'center', gap:8 }}>
+        <span className="mini-bar" style={{ width:80, height:6, background:'#e2e8f0', borderRadius:99, overflow:'hidden', display:'inline-block' }}><span className="mini-fill" style={{ width: `${Math.max(0, Math.min(100, v))}%`, backgroundColor: barColor, height:'100%', display:'block', borderRadius:99 }} /></span>
+        <span className="score-pct" style={{ color: barColor, fontWeight:600, fontSize:12 }}>{v}%</span>
+      </span>
+      <div style={{ marginTop:4 }}>
+        <Tag color={tagColor} style={{ fontSize:10, fontWeight:700, margin:0 }}>{d.final_decision}</Tag>
+      </div>
+      <div style={{ marginTop:4, fontSize:10, color:'#64748b' }}>
+        P {row.person_score ?? '—'} · R {row.role_score ?? '—'} · F {row.candidate_fit && row.candidate_fit.score != null ? row.candidate_fit.score : '—'} · J {row.joining_probability && row.joining_probability.score != null ? row.joining_probability.score : '—'} · {row.confidence_score ? row.confidence_score.label : '—'}
+      </div>
+    </div>
   );
 }
 
@@ -140,7 +146,7 @@ export default function ScoresPage() {
       } else {
         resp = await api.post('/api/admin/employees', JSON.stringify({ name: values.name, email: values.email, date_of_birth: dobIso, job_description_id: values.job_description_id || null, position: values.position || null, client: values.client || null, company_id: values.company_id || null }));
       }
-      if (resp && resp.auto_rated) message.success(`Candidate added — 23 parameters auto-rated from JD/Resume (match ${resp.capability_match_pct}%)`);
+      if (resp && resp.auto_rated) message.success(`Candidate added — 16 SOP parameters auto-rated from JD/Resume (evaluation ${resp.capability_match_pct}%)`);
       else message.success('Candidate added');
       setAddOpen(false);
       addForm.resetFields();
@@ -220,7 +226,7 @@ export default function ScoresPage() {
     let key = sortKey;
     let dir = sortDir;
     if (advancedFilters && advancedFilters.sort) {
-      const map = { 'Recently added': 'id', 'Overall Score': 'weighted_pct', 'JD Match': 'capability_match_pct', 'Name': 'applicant_name' };
+      const map = { 'Recently added': 'id', 'Overall Score': 'weighted_pct', 'Evaluation': 'capability_match_pct', 'Name': 'applicant_name' };
       key = map[advancedFilters.sort] || key;
     }
     if (advancedFilters && advancedFilters.order) {
@@ -282,7 +288,7 @@ export default function ScoresPage() {
               <th style={{ cursor:'pointer', userSelect:'none' }} onClick={()=>toggleSort('applicant_name')}>EMPLOYEE{sortIcon('applicant_name')}</th>
               <th style={{ cursor:'pointer', userSelect:'none' }} onClick={()=>toggleSort('client')}>CLIENT{sortIcon('client')}</th>
               <th style={{ cursor:'pointer', userSelect:'none' }} onClick={()=>toggleSort('position')}>POSITION{sortIcon('position')}</th>
-              <th style={{ cursor:'pointer', userSelect:'none' }} onClick={()=>toggleSort('weighted_pct')}>WEIGHTED SCORE{sortIcon('weighted_pct')}</th>
+              <th style={{ cursor:'pointer', userSelect:'none' }} onClick={()=>toggleSort('weighted_pct')}>PURSUIT PRIORITY{sortIcon('weighted_pct')}</th>
               <th style={{ width:110 }}>ACTION</th>
             </tr>
           </thead>
@@ -307,7 +313,7 @@ export default function ScoresPage() {
                 </td>
                 <td style={{ fontSize:13, color:'#334155' }}>{row.client || '—'}</td>
                 <td style={{ fontSize:13, color:'#334155' }}>{row.position || '—'}</td>
-                <td><WeightedBar v={row.weighted_pct} /></td>
+                <td><PursuitCol row={row} /></td>
                 <td>
                   <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                     <Link to={`/scores/${row.id}`}><button className={row.scorecard_id ? 'btn-edit' : 'btn-score'}>{row.scorecard_id ? 'Edit Score' : 'Score Now'}</button></Link>
@@ -379,7 +385,7 @@ export default function ScoresPage() {
               <Form.Item name="resume" valuePropName="file" label={null}><Upload beforeUpload={(file) => { const r = validateResumeFileClient(file); if (!r.ok) { message.error(r.message); return Upload.LIST_IGNORE; } return false; }} maxCount={1} accept=".pdf,.doc,.docx"><Button icon={<UploadOutlined />} block>Select resume file</Button></Upload></Form.Item>
             </div>
           </div>
-          <div style={{ fontSize: 11, color: '#9aa0a6', marginBottom: 12 }}><FileTextOutlined /> Upload JD + resume to calculate Capability Match and auto-rate parameters.</div>
+          <div style={{ fontSize: 11, color: '#9aa0a6', marginBottom: 12 }}><FileTextOutlined /> Upload JD + resume to calculate the Candidate Evaluation and auto-rate parameters.</div>
           <Button type="primary" htmlType="submit" block>Add Candidate</Button>
         </Form>
       </Modal>

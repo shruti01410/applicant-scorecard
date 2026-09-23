@@ -70,7 +70,7 @@ router.post('/analyze', upload.single('resume_file'), async (req,res)=>{
     const conclusion=buildOverallConclusion({ weightedPct: overallScore, badge: overallScore>=80?'Excellent':overallScore>=65?'Good':overallScore>=30?'Average':'Needs Improvement', scores:[], triNature });
     const flags=detectResumeFlags(resumeText, '', {pct: overallScore});
     const interviewPrep = triNature ? (()=>{ const sorted=Object.entries(triNature.parameters).sort((a,b)=>a[1].score-b[1].score); const low=sorted[0]; return { generalOpeners:[`Walk me through your experience as ${current_role||'this role'} — what energized you most?`, `How do you handle feedback when ${low?low[0].toLowerCase():''} is stretched?`, `Describe the team where you do your best work`], signalBasedPrompts: low? [`On "${low[0]}" (${low[1].score}) the shadow is "${low[1].shadow.toLowerCase()}" — how do you notice it?`,`You read as strongly ${sorted[sorted.length-1][0]} — when does that help most?`]:[], summaryPrompt:`Generate a one-paragraph interview-ready summary for ${candidate_name} who is ${current_role||'a candidate'} with ${expYears} years experience — leads with strengths, names one thing to probe, stays neutral.` }; })() : null;
-    const companyFit={ trajectoryAlignment:'Good', brandAlignment:'Neutral', founderAlignment:'Worth exploring', verdict:'Company context not provided — add company founding to enable full fit' };
+    const companyFit={ trajectoryAlignment:'Good', brandAlignment:'Neutral', verdict:'Company context not provided — add company founding to enable full fit' };
 
     // optionally create/update employee + scorecard for persistence
     let employeeId=null;
@@ -81,7 +81,7 @@ router.post('/analyze', upload.single('resume_file'), async (req,res)=>{
         const { makeUsername }=require('../database');
         const username=makeUsername(candidate_name);
         const email=username+'@scorecard.com';
-        const info=db.prepare('INSERT INTO users (username,password,role,name,email,resume_text) VALUES (?,?,?,?,?,?)').run(username, require('bcryptjs').hashSync('12345',10),'employee',candidate_name,email,resumeText);
+        const info=db.prepare('INSERT INTO users (username,password,role,name,email,resume_text) VALUES (?,?,?,?,?,?)').run(username, require('bcryptjs').hashSync(require('../security').defaultEmployeePassword(),10),'employee',candidate_name,email,resumeText);
         employeeId=info.lastInsertRowid;
         db.prepare('INSERT INTO scorecards (employee_id, applicant_name, email, position) VALUES (?,?,?,?)').run(employeeId,candidate_name,email,current_role);
       }

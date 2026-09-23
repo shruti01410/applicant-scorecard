@@ -6,9 +6,10 @@ const { computeNumoParameters } = require('../numerologyUtils');
 const { buildOverallConclusion } = require('../overallConclusion');
 const { weightedPct } = require('../scoreUtils');
 const db = require('../database');
+const { jwtSecret } = require('../security');
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'scorecard-secret-key';
+const JWT_SECRET = jwtSecret();
 
 function authPdf(req, res, next) {
   const token = req.query.token || (req.headers.authorization && req.headers.authorization.slice(7));
@@ -134,7 +135,7 @@ router.get('/employees/:id/numerology/pdf', authPdf, (req, res) => {
 
     // HEADER
     doc.rect(0, 0, PW, 80).fill('#1B1D25');
-    doc.fontSize(20).fillColor('#ffffff').font('Helvetica-Bold').text('Inner Intelligence Report', MX, 20, { width: CW });
+    doc.fontSize(20).fillColor('#ffffff').font('Helvetica-Bold').text('Behavioral Reflection Report', MX, 20, { width: CW });
     doc.fontSize(11).fillColor('#C79A4B').font('Helvetica').text(`${name || 'Unknown'}  |  ${dob || 'No DOB'}  |  ${today}`, MX, 48, { width: CW });
 
     let y = 100;

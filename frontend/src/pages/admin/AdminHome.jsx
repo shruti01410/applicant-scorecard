@@ -104,7 +104,7 @@ export default function AdminHome() {
       </section>
 
       <footer className="lp-footer">
-        <div className="lp-container">© {new Date().getFullYear()} Applicant Scorecard — All rights reserved</div>
+        <div className="lp-container">© {new Date().getFullYear()} Humsee Score — All rights reserved</div>
       </footer>
     </div>
   );

@@ -178,7 +178,7 @@ export default function JobDescriptions() {
   function confirmDelete(r) {
     Modal.confirm({
       title: 'Delete this JD?',
-      content: `"${r.title}" and its extracted keywords will be permanently deleted. Linked employees keep their data but lose JD-matched capability scores.`,
+      content: `"${r.title}" and its extracted keywords will be permanently deleted. Linked employees keep their data but lose JD evaluation scores.`,
       okText: 'Delete',
       okButtonProps: { danger: true },
       cancelText: 'Cancel',

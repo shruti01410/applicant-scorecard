@@ -2,6 +2,9 @@
 node_modules/
 backend/node_modules/
 backend/scorecard.db
+backend/.jwt-secret
+.jwt-secret
+/data/.jwt-secret
 
 # Frontend
 frontend/node_modules/
@@ -15,3 +18,8 @@ frontend/dist/
 .DS_Store
 npm-debug.log*
 backend/uploads/
+firebase-debug.log
+/20
+firebase-debug.log
+/20
+

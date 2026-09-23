@@ -147,13 +147,21 @@ function autoRateEnhanced({ jdText, resumeText, candidateName, jobTitle, lifePat
   const jdAnalysis = analyzeJD(jdText);
   const evidenceResults = extractEvidence(resumeText, jdAnalysis.requirements);
   const mustHaveCheck = checkMustHaves(jdAnalysis, evidenceResults);
-  let paramScores = mapEvidenceToParameters(evidenceResults, jdAnalysis);
-  paramScores = applyJDWeights(paramScores, jdId, db);
-  paramScores = applyNumerologyBonus(paramScores, candidateName, lifePath);
-
-  const pct = computeWeightedPct(paramScores, jdId, db);
-  const overallConfidence = computeConfidence(paramScores.flatMap(p => p.evidence || []));
-
+  let paramScores = [];
+  let pct = null;
+  let overallConfidence = 0;
+  // The legacy 23-parameter engine (mapEvidenceToParameters) was replaced by the
+  // SOP 16-parameter auto-raters. Keep it best-effort only — never let it crash
+  // the auto-rate endpoint, since SOP scoring no longer depends on it.
+  try {
+    paramScores = mapEvidenceToParameters(evidenceResults, jdAnalysis);
+    paramScores = applyJDWeights(paramScores, jdId, db);
+    paramScores = applyNumerologyBonus(paramScores, candidateName, lifePath);
+    pct = computeWeightedPct(paramScores, jdId, db);
+    overallConfidence = computeConfidence(paramScores.flatMap(p => p.evidence || []));
+  } catch (e) {
+    overallConfidence = 0;
+  }
   return {
     paramScores,
     weightedPct: pct,
@@ -168,4 +176,58 @@ function autoRateEnhanced({ jdText, resumeText, candidateName, jobTitle, lifePat
   };
 }
 
-module.exports = { autoRateParameters, autoRateEnhanced, PARAM_KEYWORDS, MANUAL_ONLY_PARAMS };
+// ---------------------------------------------------------------------------
+// SOP-aware auto-raters. Map JD + resume keyword evidence to the 16 SOP
+// parameters (PERSON/ROLE only — DEAL params 114-116 are recruiter-rated).
+// Scores are editable 0-100 suggestions, never binding. Params without text
+// evidence are left not_scored (excluded, not penalised).
+// ---------------------------------------------------------------------------
+
+const SOP_PARAM_KEYWORDS = {
+  101: ['presentation','communication','communicate','present','public speaking','slides','demo','workshop','training','convincing','persuasive','negotiation','articulate'],
+  102: ['problem','solving','analytical','analysis','solution','troubleshoot','critical','thinking','debug','resolve','fix','root cause'],
+  103: ['decision','judg','prioritiz','evaluate','assess','tradeoff','reasoning','insight','data-driven','sound judgment','prioritisation'],
+  104: ['team','collaborat','cross-functional','stakeholder','partner','facilitat','coordinate','group'],
+  105: ['adaptability','adapt','flexible','versatile','change','agile','resilience','dynamic','multi-task','fast paced','rapidly changing'],
+  106: ['initiative','proactive','self starter','ownership','drive','independent','autonomous','initiated','proactively'],
+  107: ['growth','learning','mindset','improve','curiosity','development','upskill','course','certified','willing to learn','continuous learning'],
+  108: ['leadership','leader','potential','mentor','supervise','oversee','team lead','managed team','lead','guided'],
+  109: ['reliability','reliable','dependable','consistent','punctual','trustworthy','discipline','deadline','on time','professional','integrity','confidentiality'],
+  110: ['values','integrity','ethics','culture','mission','work ethic','respectful','collaboration','integrity'],
+  111: ['technical','excel','tally','sap','accounting','software','tools','erp','gst','tallyprime','quickbooks','power bi','sql','python','java','cloud','aws','azure','excel','analysis','domain','erp'],
+  112: ['experience','relevant','exposure','background','years','track record','worked as','handled','managed','industry','domain','sector'],
+  113: ['education','degree','bcom','mcom','ca','mba','certification','qualification','graduate','bachelor','master','diploma','university','institute'],
+};
+
+function autoRateSopParameters({ jdText, resumeText }) {
+  const jdLower = String(jdText || '').toLowerCase();
+  const resumeLower = String(resumeText || '').toLowerCase();
+  const scores = [];
+  Object.entries(SOP_PARAM_KEYWORDS).forEach(([rawId, kws]) => {
+    const id = Number(rawId);
+    const relevantKws = kws.filter(k => jdLower.includes(k));
+    const matchedKws = relevantKws.filter(k => resumeLower.includes(k));
+    const resumeHits = kws.filter(k => resumeLower.includes(k)).length;
+
+    let score = null;
+    let detail;
+    if ((relevantKws.length === 0 || (jdLower.trim().length === 0))) {
+      // No JD signal → resume evidence only (weak suggestion).
+      if (resumeHits >= 3) { score = 70; detail = 'resume evidence only'; }
+      else if (resumeHits >= 2) { score = 60; detail = 'resume evidence only'; }
+      else if (resumeHits === 1) { score = 50; detail = 'weak resume evidence'; }
+      else { detail = 'no evidence — leave for recruiter'; }
+    } else {
+      const ratio = matchedKws.length / relevantKws.length;
+      if (ratio >= 0.7) { score = 85; detail = `jd+resume matched ${matchedKws.length}/${relevantKws.length}`; }
+      else if (ratio >= 0.4) { score = 70; detail = `jd+resume matched ${matchedKws.length}/${relevantKws.length}`; }
+      else if (ratio >= 0.2) { score = 55; detail = `jd+resume matched ${matchedKws.length}/${relevantKws.length}`; }
+      else if (matchedKws.length > 0) { score = 45; detail = 'partial resume coverage'; }
+      else { score = 30; detail = 'JD requires it, resume silent'; }
+    }
+    scores.push({ parameter_id: id, score, status: score == null ? 'not_scored' : 'active', detail });
+  });
+  return scores;
+}
+
+module.exports = { autoRateParameters, autoRateEnhanced, autoRateSopParameters, PARAM_KEYWORDS, MANUAL_ONLY_PARAMS };

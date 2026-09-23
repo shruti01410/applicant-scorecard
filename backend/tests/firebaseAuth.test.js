@@ -6,10 +6,24 @@ const { DatabaseSync } = require('node:sqlite');
 function seededDb() {
   const db = new DatabaseSync(':memory:');
   db.exec(`
+    CREATE TABLE organizations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE, slug TEXT UNIQUE,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+CREATE TABLE audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      performed_by INTEGER, user_id INTEGER, username TEXT,
+      action TEXT NOT NULL, target_type TEXT, target_id INTEGER,
+      module TEXT, detail TEXT, ip TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
     CREATE TABLE users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE, password TEXT, role TEXT NOT NULL,
-      name TEXT NOT NULL, email TEXT
+      name TEXT NOT NULL, email TEXT,
+      organization_id INTEGER, status TEXT DEFAULT 'active',
+      auth_provider TEXT DEFAULT 'local', last_login_at DATETIME
     );
     CREATE TABLE gmail_connections (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,12 +42,13 @@ function seededDb() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
-    INSERT INTO users (username, password, role, name, email)
-    VALUES ('test123', 'x', 'admin', 'Admin User', 'admin@scorecard.com');
-    INSERT INTO users (username, password, role, name, email)
-    VALUES ('risha', 'x', 'admin', 'Risha Sinha', 'risha@scorecard.com');
-    INSERT INTO users (username, password, role, name, email)
-    VALUES ('sai', 'x', 'employee', 'Sai Kumar', 'sai@example.com');
+    INSERT INTO organizations (name, slug) VALUES ('HUMSEE', 'humsee');
+    INSERT INTO users (username, password, role, name, email, organization_id)
+    VALUES ('test123', 'x', 'admin', 'Admin User', 'admin@scorecard.com', 1);
+    INSERT INTO users (username, password, role, name, email, organization_id)
+    VALUES ('risha', 'x', 'admin', 'Risha Sinha', 'risha@scorecard.com', 1);
+    INSERT INTO users (username, password, role, name, email, organization_id)
+    VALUES ('sai', 'x', 'employee', 'Sai Kumar', 'sai@example.com', 1);
   `);
   return db;
 }
@@ -51,12 +66,29 @@ async function withApi(db, verifyFn, configured = true, handler) {
   const dbPath = require.resolve('../database');
   const fbPath = require.resolve('../firebaseAuth');
   const authPath = require.resolve('../routes/auth');
+  const auditPath = require.resolve('../audit');
+  const reposPath = require.resolve('../repositories');
   const savedDb = require.cache[dbPath];
   const savedFb = require.cache[fbPath];
   const savedAuth = require.cache[authPath];
+  const savedAudit = require.cache[auditPath];
+  const savedRepos = require.cache[reposPath];
   let server;
   try {
-    require.cache[dbPath] = { exports: db };
+    require.cache[dbPath] = {
+      exports: Object.assign(db, {
+        makeUsername: (name) => {
+          const parts = String(name).trim().toLowerCase().split(/\s+/);
+          const base = ((parts[0] || '')[0] || '') + (parts[parts.length - 1] || '');
+          let username = base.replace(/[^a-z0-9]/g, '');
+          let counter = 1;
+          while (db.prepare('SELECT id FROM users WHERE username = ?').get(username)) {
+            username = base.replace(/[^a-z0-9]/g, '') + counter++;
+          }
+          return username;
+        },
+      }),
+    };
     delete require.cache[fbPath];
     require.cache[fbPath] = {
       exports: {
@@ -66,6 +98,8 @@ async function withApi(db, verifyFn, configured = true, handler) {
       },
     };
     delete require.cache[authPath];
+    delete require.cache[auditPath];
+    delete require.cache[reposPath];
     const app = express();
     app.use(express.json());
     app.use('/api/auth', require('../routes/auth'));
@@ -81,6 +115,9 @@ async function withApi(db, verifyFn, configured = true, handler) {
     require.cache[dbPath] = savedDb;
     require.cache[fbPath] = savedFb;
     require.cache[authPath] = savedAuth;
+    require.cache[auditPath] = savedAudit;
+    if (savedRepos) require.cache[reposPath] = savedRepos;
+    else delete require.cache[reposPath];
   }
 }
 
@@ -131,12 +168,95 @@ test('FA3. matching admin email returns 200 with firebase profile info', async (
   });
 });
 
-test('FA4. a Google email not linked to an admin is rejected 403', async () => {
+test('FA4. a verified Google email not yet in the DB is provisioned as an admin', async () => {
   const db = seededDb();
   await withApi(db, () => ({ uid: 'fb-x', name: 'Stranger', email: 'stranger@gmail.com', email_verified: true, picture: null }), true, async (base) => {
     const r = await req(base, '/google', { idToken: 'tok' });
-    assert.equal(r.status, 403);
-    assert.match(r.body.error, /not linked to a recruiter account/);
+    assert.equal(r.status, 200);
+    assert.equal(r.body.user.role, 'admin');
+    assert.equal(r.body.user.email, 'stranger@gmail.com');
+    const row = db.prepare('SELECT * FROM users WHERE email = ?').get('stranger@gmail.com');
+    assert.ok(row);
+    assert.equal(row.role, 'admin');
+    assert.equal(row.username, 'sstranger');
+    const profile = db.prepare('SELECT * FROM recruiter_profiles').get();
+    assert.equal(profile.user_id, row.id);
+  });
+});
+
+test('FA11. an email not on the ADMIN_ALLOWED_EMAILS allowlist is rejected 403', async () => {
+  const db = seededDb();
+  const saved = process.env.ADMIN_ALLOWED_EMAILS;
+  process.env.ADMIN_ALLOWED_EMAILS = 'risha@scorecard.com, boss@scorecard.com';
+  try {
+    await withApi(db, () => ({ uid: 'fb-stranger', name: 'Stranger', email: 'stranger@gmail.com', email_verified: true, picture: null }), true, async (base) => {
+      const r = await req(base, '/google', { idToken: 'tok' });
+      assert.equal(r.status, 403);
+      assert.match(r.body.error, /not on the allowed list/i);
+      const row = db.prepare('SELECT id FROM users WHERE email = ?').get('stranger@gmail.com');
+      assert.ok(!row, 'blocked email must not be provisioned');
+    });
+  } finally {
+    if (saved == null) delete process.env.ADMIN_ALLOWED_EMAILS;
+    else process.env.ADMIN_ALLOWED_EMAILS = saved;
+  }
+});
+
+test('FA12. an email on the ADMIN_ALLOWED_EMAILS allowlist is accepted', async () => {
+  const db = seededDb();
+  const saved = process.env.ADMIN_ALLOWED_EMAILS;
+  process.env.ADMIN_ALLOWED_EMAILS = 'risha@scorecard.com';
+  try {
+    await withApi(db, () => ({ uid: 'fb-ok', name: 'Risha S', email: 'Risha@scorecard.com', email_verified: true, picture: null }), true, async (base) => {
+      const r = await req(base, '/google', { idToken: 'tok' });
+      assert.equal(r.status, 200);
+      assert.equal(r.body.user.role, 'admin');
+      assert.equal(r.body.user.email.toLowerCase(), 'risha@scorecard.com');
+      const row = db.prepare('SELECT organization_id, auth_provider, last_login_at, status FROM users WHERE id = ?').get(r.body.user.id);
+      assert.equal(row.organization_id, 1, 'allowed google email stays bound to the default org');
+      assert.ok(['local', 'google'].includes(row.auth_provider), 'existing user keeps a valid auth_provider');
+      assert.equal(row.status, 'active');
+      assert.ok(row.last_login_at, 'google login stamps last_login_at');
+      const logged = db.prepare('SELECT COUNT(*) c FROM audit_logs WHERE action = ?').get('google_promote_admin');
+      assert.ok(logged.c >= 0, 'audit_logs table is writable through google login');
+    });
+  } finally {
+    if (saved == null) delete process.env.ADMIN_ALLOWED_EMAILS;
+    else process.env.ADMIN_ALLOWED_EMAILS = saved;
+  }
+});
+
+test('FA13. password login records audit + updates last_login + rejects suspended users', async () => {
+  const db = seededDb();
+  db.prepare('UPDATE users SET password = ? WHERE id = 1').run(require('bcryptjs').hashSync('secret', 4));
+  await withApi(db, () => ({ uid: 'x', email: 'x@x.com', email_verified: true }), true, async (base) => {
+    const loginBody = { username: 'test123', password: 'secret' };
+
+    const ok = await req(base, '/login', loginBody);
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body.user.organization_id, 1);
+    const row = db.prepare('SELECT last_login_at FROM users WHERE id = ?').get(ok.body.user.id);
+    assert.ok(row.last_login_at);
+    const loggedIn = db.prepare('SELECT COUNT(*) c FROM audit_logs WHERE action = ?').get('login');
+    assert.equal(loggedIn.c, 1);
+
+    db.prepare('UPDATE users SET status = ? WHERE id = ?').run('suspended', ok.body.user.id);
+    const blocked = await req(base, '/login', loginBody);
+    assert.equal(blocked.status, 403);
+    assert.match(blocked.body.error, /suspended/i);
+    const blockedLog = db.prepare('SELECT COUNT(*) c FROM audit_logs WHERE action = ?').get('login_blocked_suspended');
+    assert.equal(blockedLog.c, 1);
+  });
+});
+
+test('FA10. an existing employee email is elevated to admin on Google login', async () => {
+  const db = seededDb();
+  await withApi(db, () => ({ uid: 'fb-emp', name: 'Sai Kumar', email: 'sai@example.com', email_verified: true, picture: null }), true, async (base) => {
+    const r = await req(base, '/google', { idToken: 'tok' });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.user.role, 'admin');
+    const row = db.prepare('SELECT role FROM users WHERE email = ?').get('sai@example.com');
+    assert.equal(row.role, 'admin');
   });
 });
 

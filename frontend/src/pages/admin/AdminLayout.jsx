@@ -114,7 +114,7 @@ export default function AdminLayout() {
     <Layout style={{ minHeight: '100vh', background: '#f1f5f9' }}>
       <Header className="navbar">
         <div className="container">
-          <div className="nav-brand">Applicant Scorecard</div>
+          <div className="nav-brand"><img src="/humsee-logo.png" alt="" className="nav-logo" onError={(e) => { e.currentTarget.style.display = 'none'; }} />Humsee Score</div>
           <div className="nav-links" style={{ flex:1, justifyContent:'center' }}>
             <Link to="/" className="nav-link">Home</Link>
             <Link to="/scores" className="nav-link">Scores</Link>

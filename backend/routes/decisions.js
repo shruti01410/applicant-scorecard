@@ -1,6 +1,8 @@
 const express = require('express');
 const db = require('../database');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { users } = require('../repositories');
+const { logAudit } = require('../audit');
 
 const router = express.Router();
 router.use(authenticate, requireRole('admin'));
@@ -18,7 +20,7 @@ function safeParse(value) {
 }
 
 function getEmployee(id) {
-  return db.prepare('SELECT id, name, email, job_description_id, resume_text, capability_match_detail FROM users WHERE id = ? AND role = ?').get(id, 'employee');
+  return users.findEmployeeWithDecisionFields(id);
 }
 
 function getLatestDecision(candidateId) {
@@ -257,6 +259,17 @@ router.post('/decisions', (req, res) => {
     INSERT INTO candidate_emails (candidate_id, decision_id, recipient_email, subject, body, status, created_at)
     VALUES (?, ?, ?, ?, ?, 'draft', datetime('now'))
   `).run(candidateId, decisionId, emp.email, template.subject, template.body);
+
+  logAudit({
+    performedBy: req.user.id,
+    username: req.user.username,
+    action: 'decision_recorded',
+    targetType: 'candidate_decision',
+    targetId: decisionId,
+    module: 'decisions',
+    detail: { candidate_id: candidateId, decision, reason_code: reasonCode },
+    req,
+  });
 
   res.status(201).json({
     decision: mapDecision(getLatestDecision(candidateId)),

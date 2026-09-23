@@ -25,7 +25,7 @@ export function decisionTag(decision) {
   return <Tag color="red" icon={<CloseCircleOutlined />} style={{ margin: 0 }}>Rejected — {decision.reason_label || decision.reason_code}</Tag>;
 }
 
-const DISCLAIMER = 'Reasons are limited to documented, job-related evidence (JD/resume capability match, recorded evaluation). Numerology and astrology are never used as a basis for hiring decisions.';
+const DISCLAIMER = 'Reasons are limited to documented, job-related evidence (JD/resume evaluation, recorded evaluation). Numerology and astrology are never used as a basis for hiring decisions.';
 
 export function DraftEmailModal({ open, draft, candidateEmail, onClose, onSaved }) {
   const [subject, setSubject] = useState('');
