@@ -71,6 +71,12 @@ export default function EvidenceDisplay({ evidenceData, paramName }) {
                   <MinusCircleFilled style={{ color: '#94a3b8', fontSize: 11 }} />
                 )}
                 <span style={{ color: '#334155' }}>{e.text}</span>
+                {e.section && (
+                  <Tag style={{ margin: 0, fontSize: 10, lineHeight: '16px', background: '#f1f5f9', color: '#334155', borderColor: '#cbd5e1' }}>{e.section}</Tag>
+                )}
+                {e.recency && (
+                  <Tag style={{ margin: 0, fontSize: 10, lineHeight: '16px', background: '#eff6ff', color: '#1d4ed8', borderColor: '#bfdbfe' }}>{e.recency}{e.recencyYear ? ' · ' + e.recencyYear : ''}</Tag>
+                )}
                 {e.strength && (
                   <span style={{ fontSize: 10, color: strengthColor(e.strength), fontWeight: 500 }}>
                     {e.strength}

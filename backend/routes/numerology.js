@@ -122,7 +122,7 @@ function personalYearTimeline(isoDob, startYear) {
   return years;
 }
 
-function generateNarrative(profile) {
+function generateNarrative(profile, resumeHint) {
   const arch = archetypeFor(profile.archetype_number);
   const now = new Date().getFullYear();
   const py = numer.personalYearNumber(profile.date_of_birth, now);
@@ -140,12 +140,29 @@ function generateNarrative(profile) {
       triLine = `Behaviorally, ${tri.signature.name} — dominant ${ELEMENT_NAMES[tri.dominantElement] || tri.dominantElement} (${tri.elements[tri.dominantElement]}) in a ${MODE_NAMES[tri.dominantMode] || tri.dominantMode} mode — with strongest behavioral signals in ${topBehav}.`;
     }
   } catch(e) {}
+  let resumeLine = '';
+  if (resumeHint && typeof resumeHint === 'string' && resumeHint.trim().length > 20) {
+    try {
+      const hint = resumeHint.trim().slice(0, 800);
+      const words = hint.toLowerCase().split(/[^a-z]+/).filter(w=> w.length>4);
+      const stop = new Set(['their','there','would','should','could','about','through','between','because','within','candidate','experience','project','working','ability']);
+      const freq = {};
+      for(const w of words){ if(stop.has(w)) continue; freq[w]=(freq[w]||0)+1; }
+      const top = Object.entries(freq).sort((a,b)=> b[1]-a[1]).slice(0,3).map(([w])=> w);
+      if(top.length){
+        const kw = top.join(', ');
+        const archKw = archName.toLowerCase();
+        resumeLine = `For light context, the resume surfaces ${kw} — which sits near the ${archKw} theme, so the evidence-based SOP read and this reflection are not expected to diverge sharply.`;
+      }
+    } catch(e) {}
+  }
   const parts = [
     `${profile.life_path_number} ${archName}: ${archSummary}`,
     tagList ? `In practice this tends to show up as ${tagList}.` : '',
     `Their birth number (${profile.birth_number}${profile.birth_number === 11 || profile.birth_number === 22 ? ` / ${[...String(profile.birth_number)].reduce((a, d) => a + Number(d), 0)}` : ''}) reinforces a recognisable default way of working.`,
     `The current personal year (${py}, ${theme ? theme.theme : 'n/a'}) points at a season of ${theme ? theme.description.toLowerCase() : 'transition'}.`,
     triLine,
+    resumeLine,
     'This is a descriptive lens, not a verified psychological profile — treat it as one input to verify in conversation, never as a hiring signal.',
   ];
   return parts.filter(Boolean).join(' ');
@@ -280,15 +297,17 @@ router.get('/employees/:id/numerology/cycle', (req, res) => {
   res.json({ timeline: personalYearTimeline(profile.date_of_birth, startYear), start_year: startYear });
 });
 
-// Narrative snapshot (cached; template-based)
+// Narrative snapshot (cached; template-based) — now lightly resume-informed so SOP and reflection don't diverge
 router.get('/employees/:id/numerology/narrative', (req, res) => {
   if (gate(req, res)) return;
   const emp = getEmployeeOr404(req.params.id);
   if (!emp) return res.status(404).json({ error: 'Employee not found' });
   let profile = getProfile(req.params.id);
   if (!profile) return res.status(404).json({ error: 'No numerology profile. Set DOB first.' });
-  if (!profile.narrative_snapshot) {
-    const narrative = generateNarrative(profile);
+  const resumeHint = (()=>{ try{ const u=db.prepare('SELECT resume_text FROM users WHERE id=?').get(emp.id); return u && u.resume_text ? String(u.resume_text).slice(0,1000) : null; }catch(e){ return null; }})();
+  const shouldRegenerate = !profile.narrative_snapshot || (resumeHint && !profile.narrative_snapshot.includes('resume surfaces'));
+  if (shouldRegenerate) {
+    const narrative = generateNarrative(profile, resumeHint);
     db.prepare('UPDATE numerology_profiles SET narrative_snapshot = ?, updated_at = datetime(\'now\') WHERE id = ?')
       .run(narrative, profile.id);
     profile = getProfile(req.params.id);

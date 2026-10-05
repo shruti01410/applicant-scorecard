@@ -51,13 +51,33 @@ export async function signInWithGoogle() {
   const cfg = await getFirebaseConfig();
   if (!cfg) throw Object.assign(new Error('Google login is not configured.'), { code: 'unconfigured' });
 
-  const { initializeApp } = await import('firebase/app');
+  const { initializeApp, getApps, getApp } = await import('firebase/app');
   const { getAuth, GoogleAuthProvider, signInWithPopup } = await import('firebase/auth');
 
-  const app = initializeApp(cfg);
+  let app;
+  try {
+    const existing = getApps();
+    if (existing.length) {
+      app = getApp();
+      // ensure config matches — if projectId differs, re-init is not needed for same project
+    } else {
+      app = initializeApp(cfg);
+    }
+  } catch (e) {
+    app = initializeApp(cfg);
+  }
   const auth = getAuth(app);
+  // Ensure auth uses current domain language
+  auth.languageCode = 'en';
   const provider = new GoogleAuthProvider();
-  const result = await signInWithPopup(auth, provider);
+  provider.setCustomParameters({ prompt: 'select_account' });
+  let result;
+  try {
+    result = await signInWithPopup(auth, provider);
+  } catch (e) {
+    // Surface the raw Firebase error so friendlyFirebaseError can map it
+    throw e;
+  }
   const idToken = await result.user.getIdToken();
   return {
     idToken,

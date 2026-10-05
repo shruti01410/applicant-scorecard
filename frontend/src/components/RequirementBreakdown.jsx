@@ -17,6 +17,12 @@ const STRENGTH_META = {
   none: { label: 'No Evidence', color: '#94a3b8', bg: '#f8fafc', border: '#e2e8f0' },
 };
 
+const RECENCY_META = {
+  current: { label: 'Current', color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
+  recent: { label: 'Recent', color: '#0369a1', bg: '#f0f9ff', border: '#bae6fd' },
+  stale: { label: 'Stale', color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
+};
+
 const STATUS_ICON = {
   matched: <CheckCircleFilled style={{ color: '#16a34a' }} />,
   partial: <QuestionCircleOutlined style={{ color: '#f59e0b' }} />,
@@ -81,6 +87,22 @@ export default function RequirementBreakdown({ requirements = [], title = 'Requi
                     <Tooltip title={r.explanation || r.expectedEvidence}>
                       <span style={{ fontWeight: 600, fontSize: 12.5, color: '#1e293b', cursor: 'help' }}>{r.requirement}</span>
                     </Tooltip>
+                    {r.semantic && (
+                      <Tooltip title={`Resume shows a semantically related expression — family: ${r.semantic.family}; equivalent: "${r.semantic.equivalent}". Confirm in the interview.`}>
+                        <Tag style={{ margin: 0, fontSize: 10, lineHeight: '18px', background: '#eef2ff', color: '#4f46e5', borderColor: '#c7d2fe' }}>semantic</Tag>
+                      </Tooltip>
+                    )}
+                    {r.evidenceSection && (
+                      <Tag style={{ margin: 0, fontSize: 10, lineHeight: '18px', background: '#f1f5f9', color: '#334155', borderColor: '#cbd5e1' }}>{r.evidenceSection}</Tag>
+                    )}
+                    {r.recency && r.recency.label !== 'unknown' && (() => {
+                      const rec = RECENCY_META[r.recency.label] || { color: '#475569', bg: '#f8fafc', border: '#e2e8f0' };
+                      return (
+                        <Tooltip title="How recent the resume evidence is">
+                          <Tag style={{ margin: 0, fontSize: 10, lineHeight: '18px', background: rec.bg, color: rec.color, borderColor: rec.border }}>{r.recency.label}{r.recency.year ? ' · ' + r.recency.year : ''}</Tag>
+                        </Tooltip>
+                      );
+                    })()}
                     {r.evidenceStrength === 'none' && r.expectedEvidence ? (
                       <span style={{ fontSize: 11, color: '#94a3b8' }}>{r.expectedEvidence}</span>
                     ) : (

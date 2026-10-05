@@ -1,4 +1,5 @@
 const { extractStructured, extractEntities, extractCandidateProfile } = require('./capabilityMatch');
+const { buildResumeSections, labelForSentence, recencyFor } = require('./resumeContext');
 
 const SOP_PARAM_META = {
   101: { name: 'Communication & Influence', weight: 12, grp: 'PERSON' },
@@ -209,6 +210,18 @@ function maxYears(ents) {
   return max;
 }
 
+const RECENCY_ORDER = { current: 3, recent: 2, stale: 1, unknown: 0 };
+
+function bestRecency(sentences) {
+  let best = { label: 'unknown', year: null };
+  for (const s of sentences) {
+    const r = recencyFor(s);
+    if (RECENCY_ORDER[r.label] > RECENCY_ORDER[best.label]) best = r;
+    else if (RECENCY_ORDER[r.label] === RECENCY_ORDER[best.label] && (r.year || 0) > (best.year || 0)) best = r;
+  }
+  return best;
+}
+
 const DEGREE_LEVELS = { bachelor: 1, master: 2, phd: 3, diploma: 0.5, '12th': 0 };
 function degreeLevel(term) {
   const t = term.toLowerCase();
@@ -229,6 +242,7 @@ function evaluateTechnical(jdText, resumeText) {
   const sentences = sentenceSplit(resumeText);
   const resAll = extractEntities(resumeText);
   const resProfile = extractCandidateProfile(resumeText);
+  const resumeSections = buildResumeSections(resumeText);
 
   const requiredSkills = jdEnts.filter((e) => (e.category === 'technical' || e.category === 'tools') && e.mode === 'required');
   const preferredSkills = jdEnts.filter((e) => (e.category === 'technical' || e.category === 'tools') && e.mode === 'preferred' && !requiredSkills.some((r) => r.term === e.term || r.display === e.display));
@@ -265,7 +279,10 @@ function evaluateTechnical(jdText, resumeText) {
         if (d.score > depth.score) depth = Object.assign({ snippet: c, contextCount: contexts.length }, d);
       }
     }
-    scored.push({ skill, importance, depth });
+    const hitSentences = rawHits.length ? rawHits.slice(0, 2) : [];
+    const section = hitSentences.length ? labelForSentence(hitSentences[0], resumeSections) : null;
+    const recency = hitSentences.length ? bestRecency(hitSentences) : { label: 'unknown', year: null };
+    scored.push({ skill, importance, depth, section, recency });
   }
 
   const weighted = scored.reduce((sum, s) => sum + s.depth.score * s.importance, 0);
@@ -293,7 +310,10 @@ function evaluateTechnical(jdText, resumeText) {
     evidence.push({
       source: 'resume',
       strength: s.depth.level === 'strong' ? 'strong' : s.depth.level === 'work' ? 'moderate' : 'weak',
-      text: '"' + (s.depth.snippet || s.skill.display) + '"' + ` (depth: ${skillLevelLabel(s.depth.level)} ${s.depth.score})`,
+      section: s.section,
+      recency: s.recency.label,
+      recencyYear: s.recency.year,
+      text: '"' + (s.depth.snippet || s.skill.display) + '"' + ` (depth: ${skillLevelLabel(s.depth.level)} ${s.depth.score}${s.section ? ` · section: ${s.section}` : ''}${s.recency.label !== 'unknown' ? ` · ${s.recency.label}${s.recency.year ? ' ' + s.recency.year : ''}` : ''})`,
     });
   }
   for (const p of preferredSkills) {
@@ -305,7 +325,7 @@ function evaluateTechnical(jdText, resumeText) {
     parameter_id: 111, name: meta.name, weight: meta.weight, grp: meta.grp,
     score, status: 'active', confidence: roundedConf, evidence, gaps,
     reason: `Technical score = Σ(skill_depth × importance)/Σ(importance); matched ${matchedN}/${scored.length} required skills (${preferredBonus} preferred bonus).`,
-    detail: { formula: 'Σ(skill_depth × importance) / Σ(importance)', required: requiredSkills.length, matched: matchedN, missing: scored.length - matchedN, preferredBonus, skills: scored.map((s) => ({ skill: s.skill.display, importance: s.importance, depth: s.depth.score, level: s.depth.level })) },
+    detail: { formula: 'Σ(skill_depth × importance) / Σ(importance)', required: requiredSkills.length, matched: matchedN, missing: scored.length - matchedN, preferredBonus, skills: scored.map((s) => ({ skill: s.skill.display, importance: s.importance, depth: s.depth.score, level: s.depth.level, section: s.section, recency: s.recency.label, recencyYear: s.recency.year })) },
   };
 }
 

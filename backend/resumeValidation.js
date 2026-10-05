@@ -17,17 +17,22 @@ const path = require('path');
 const { extractText } = require('./fileTextExtract');
 
 const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
-const DEFAULT_THRESHOLD = 60;
+const DEFAULT_THRESHOLD = 35;
 const RESUME_THRESHOLD = Number(process.env.RESUME_CONFIDENCE_THRESHOLD) || DEFAULT_THRESHOLD;
+
+// A text-less file below this size is an empty/stub document, not a scan. Anything
+// that plausibly holds an image (scanned/photo resume) is far larger.
+const MIN_UNSCORED_SIZE = 1024;
 
 const SUPPORTED_EXT = new Set(['.pdf', '.doc', '.docx']);
 
 const FRIENDLY_MESSAGES = {
   file_type:     'This file type isn\'t supported. Please upload a CV or resume in PDF, DOC, or DOCX format.',
-  mime_mismatch: 'This file doesn\'t appear to be a resume. Please upload a valid CV or resume in PDF, DOC, or DOCX format.',
+  mime_mismatch: 'This file doesn\'t match its extension, so we can\'t read it. Please re-export your resume as PDF or DOCX and upload it again.',
   too_large:     'File is larger than the 10 MB limit. Please compress or choose a smaller file.',
-  blank:         'This file doesn\'t appear to be a resume. Please upload a valid CV or resume in PDF, DOC, or DOCX format.',
-  low_confidence:'This file doesn\'t appear to be a resume. Please upload a valid CV or resume in PDF, DOC, or DOCX format.',
+  blank:         'This file couldn\'t be read. Please upload a valid CV or resume in PDF, DOC, or DOCX format.',
+  low_confidence:'We could open this file, but its content doesn\'t look like a resume (confidence {score}/100). Please upload your CV or resume in PDF, DOC, or DOCX.',
+  no_text:       'No readable text was found in this file - it may be a scanned or image-only document. The file was saved, but auto-rating, capability match and scoring are skipped until a text-readable PDF, DOC or DOCX is provided.',
 };
 
 // ---------------------------------------------------------------------------
@@ -80,6 +85,8 @@ const SECTIONS = [
     points: 15,
     test: (t) =>
       /\b(?:technical\s+)?skills?\b/i.test(t) ||
+      /\bcore\s+competencies\b/i.test(t) ||
+      /\bcompetencies\b/i.test(t) ||
       /\btechnologies\b/i.test(t) ||
       /\btools\b/i.test(t) ||
       /\bproficient\s+in\b/i.test(t) ||
@@ -93,7 +100,10 @@ const SECTIONS = [
     points: 15,
     test: (t) =>
       /\b(?:work\s+)?experience\b/i.test(t) ||
+      /\bwork\s+history\b/i.test(t) ||
+      /\bemployment\s+history\b/i.test(t) ||
       /\bprofessional\s+experience\b/i.test(t) ||
+      /\bprofessional\s+background\b/i.test(t) ||
       /\bemployment\b/i.test(t) ||
       /\bintern(?:ship|ed)?\b/i.test(t) ||
       /\bworked\s+(?:at|as)\b/i.test(t) ||
@@ -221,11 +231,12 @@ function isReadable(text) {
   return letters / s.length >= 0.05 && s.split(/\s+/).length >= 15;
 }
 
-function extractResumeTextSafe(buffer, originalname) {
+async function extractResumeTextSafe(buffer, originalname) {
   try {
-    return extractText(buffer, originalname) || '';
+    const text = await extractText(buffer, originalname);
+    return { text: text || '', error: null };
   } catch (e) {
-    return '';
+    return { text: '', error: e.message };
   }
 }
 
@@ -313,35 +324,59 @@ async function validateResume(buffer, originalname, opts = {}) {
   }
 
   // 2. Extract text
-  const text = await extractResumeTextSafe(buffer, originalname);
+  const { text, error: extractError } = await extractResumeTextSafe(buffer, originalname);
+  const chars = text ? text.trim().length : 0;
+  const words = text && text.trim() ? text.trim().split(/\s+/).length : 0;
 
   // 3. Readability check (corrupted / binary fallback / scanned image-only)
   if (!isReadable(text)) {
-    return { valid: false, confidenceScore: 0, reason: 'blank', message: FRIENDLY_MESSAGES.blank };
+    // Bytes we can't even identify as a PDF/DOC/DOCX stay a hard reject, as does an
+    // implausibly tiny stub. A real document with no text layer (scan/photo) is
+    // ACCEPTED - it just can never be auto-scored, so the recruiter still gets the file.
+    if (!sniffType(buffer) || buffer.length < MIN_UNSCORED_SIZE) {
+      return { valid: false, confidenceScore: 0, reason: 'blank', message: FRIENDLY_MESSAGES.blank, chars, words, extractError };
+    }
+    return {
+      valid: true, confidenceScore: 0, reason: 'no_text', matched: [], negFlags: [],
+      warning: FRIENDLY_MESSAGES.no_text, chars, words, extractError,
+    };
   }
 
   // 4. Confidence scoring
   const { score, matched, negFlags } = calculateResumeConfidence(text);
 
   if (score < threshold) {
-    return { valid: false, confidenceScore: score, reason: 'low_confidence', message: FRIENDLY_MESSAGES.low_confidence, matched, negFlags };
+    const detail = (matched || []).length ? matched.join(', ') : 'no resume sections';
+    return {
+      valid: false, confidenceScore: score, reason: 'low_confidence', matched, negFlags,
+      chars, words, extractError,
+      message: FRIENDLY_MESSAGES.low_confidence.replace('{score}', String(score)).replace('{sections}', detail),
+    };
   }
 
-  return { valid: true, confidenceScore: score, reason: null, matched, negFlags };
+  return { valid: true, confidenceScore: score, reason: null, matched, negFlags, chars, words, extractError };
 }
 
 // ---------------------------------------------------------------------------
 // Logging helper (call on rejection from routes)
 // ---------------------------------------------------------------------------
 
-function logRejection({ originalname, size }, { confidenceScore, reason }) {
+function logRejection({ originalname, size }, { confidenceScore, reason, chars, words, extractError }) {
   const ext = path.extname(originalname || '').toLowerCase();
-  console.log(`[resume-validation] REJECTED | ${new Date().toISOString()} | ext=${ext} size=${size || '?'} score=${confidenceScore} reason=${reason}`);
+  const extra = `chars=${chars ?? '?'} words=${words ?? '?'}${extractError ? ` extract_error=${JSON.stringify(extractError)}` : ''}`;
+  console.log(`[resume-validation] REJECTED | ${new Date().toISOString()} | ext=${ext} size=${size || '?'} score=${confidenceScore} reason=${reason} ${extra}`);
+}
+
+// Accepted-but-unscored: a real document with no extractable text (scan / image-only).
+function logUnscored({ originalname, size }, { chars, words, extractError }) {
+  const ext = path.extname(originalname || '').toLowerCase();
+  console.log(`[resume-validation] ACCEPTED_NO_TEXT | ${new Date().toISOString()} | ext=${ext} size=${size || '?'} chars=${chars ?? '?'} words=${words ?? '?'}${extractError ? ` extract_error=${JSON.stringify(extractError)}` : ''}`);
 }
 
 module.exports = {
   SUPPORTED_EXT,
   MAX_SIZE,
+  MIN_UNSCORED_SIZE,
   RESUME_THRESHOLD,
   SECTIONS,
   NEGATIVE_DOCS,
@@ -354,4 +389,5 @@ module.exports = {
   validateResumeFile,
   validateResume,
   logRejection,
+  logUnscored,
 };

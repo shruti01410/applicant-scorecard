@@ -1,3 +1,6 @@
+const { matchInSentences } = require('./semanticMatch');
+const { buildResumeSections, labelForSentence, recencyFor } = require('./resumeContext');
+
 /*
  * Structured JD <-> Resume capability matching engine.
  *
@@ -1214,6 +1217,17 @@ function evidenceFor(re, ctx) {
     if (ctx.profile.has(re.term)) {
       return { status: 'partial', strength: 'weak', evidence: [], score: 55, explanation: `Requirement recognized via a related term on the resume, but "${re.display}" was not found verbatim — confirm this in the interview.` };
     }
+    const sem = matchInSentences(re.display || re.term || re.keyword, ctx.resumeSentences);
+    if (sem) {
+      return {
+        status: 'partial',
+        strength: 'weak',
+        evidence: sem.sentence ? [sem.sentence] : [],
+        score: 60,
+        semantic: { family: sem.family, equivalent: sem.equivalent },
+        explanation: `Resume does not name "${re.display}" verbatim but shows semantically related evidence (${sem.family}: "${sem.equivalent}") — verify in the interview.`,
+      };
+    }
     return { status: 'missing', strength: 'none', evidence: [], score: 0, explanation: `Resume does not contain "${re.display}" — confirm whether the candidate qualifies before proceeding.` };
   }
   let strongest = 'explicit';
@@ -1237,6 +1251,14 @@ function evidenceFor(re, ctx) {
 function buildRequirement(re, ctx) {
   const ev = evidenceFor(re, ctx);
   const priority = priorityFor(re);
+  const first = (ev.evidence || [])[0];
+  let evidenceSection = null;
+  let recency = null;
+  if (first && ctx.resumeSections) {
+    evidenceSection = labelForSentence(first, ctx.resumeSections);
+    const rec = recencyFor(first);
+    if (rec && rec.label !== 'unknown') recency = { ...rec };
+  }
   return {
     id: `${re.category}:${re.term || re.keyword || re.display}`,
     requirement: re.display,
@@ -1252,6 +1274,9 @@ function buildRequirement(re, ctx) {
     matchStatus: ev.status,
     score: ev.score,
     confidence: Math.round(re.confidence * 100) / 100,
+    semantic: ev.semantic || null,
+    evidenceSection,
+    recency,
     explanation: `${ev.explanation} Priority: ${PRIORITY_LABELS[priority]}.`,
   };
 }
@@ -1287,12 +1312,16 @@ function matchResumeToJD(jdText, resumeText, opts = {}) {
   const resumeExpEntity = resumeExps.length ? resumeExps.reduce((a, b) => (claimedYears(b) >= claimedYears(a) ? b : a)) : null;
 
   const resumeTok = normalizedTokens(normResume);
+  const resumeSections = buildResumeSections(resumeText);
+  const resumeSentences = resumeSections.flatMap((s) => s.sentences);
   const resumeCtx = {
     tokens: resumeTok.tokens,
     ranges: sentenceRanges(resumeTok.tokens, resumeTok.isBoundary),
     profile: resumeProfile,
     resumeMaxYears,
     resumeExpEntity,
+    resumeSections,
+    resumeSentences,
   }
 
   const isMatched = (re) => {

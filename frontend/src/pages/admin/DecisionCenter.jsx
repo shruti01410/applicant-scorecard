@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, Tag, Button, Segmented, Spin, Empty, Modal, Descriptions, message, Space, Typography } from 'antd';
 import {
   CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined, MailOutlined, FileTextOutlined, LinkOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { api } from '../../services/api';
@@ -17,6 +18,8 @@ export default function DecisionCenter() {
   const [draft, setDraft] = useState(null);
   const [draftEmail, setDraftEmail] = useState(null);
   const [draftOpen, setDraftOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [deleting, setDeleting] = useState(false);
 
   async function fetchData() {
     setLoading(true);
@@ -30,6 +33,62 @@ export default function DecisionCenter() {
     }
   }
   useEffect(() => { fetchData(); }, []);
+
+  function toggleSelect(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll(ids, checked) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => { if (checked) next.add(id); else next.delete(id); });
+      return next;
+    });
+  }
+
+  async function doDelete(ids) {
+    setDeleting(true);
+    try {
+      if (ids.length === 1) await api.delete(`/api/admin/employees/${ids[0]}`);
+      else await api.post('/api/admin/employees/bulk-delete', { ids });
+      message.success(ids.length === 1 ? 'Candidate deleted' : `${ids.length} candidates deleted`);
+      setSelectedIds(new Set());
+      setDetails(null);
+      await fetchData();
+    } catch (e) {
+      message.error(e.message);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  function confirmDeleteOne(c) {
+    Modal.confirm({
+      title: `Delete ${c.applicant_name}?`,
+      content: 'The candidate will be hidden from Decision Center and Scores but kept in the database — you can restore later.',
+      okText: 'Delete',
+      okButtonProps: { danger: true },
+      cancelText: 'Cancel',
+      onOk: () => doDelete([c.candidate_id]),
+    });
+  }
+
+  function confirmDeleteMany() {
+    const ids = [...selectedIds];
+    Modal.confirm({
+      title: `Delete ${ids.length} candidates?`,
+      content: 'They will be hidden from Decision Center and Scores but kept in the database — each one can be restored later.',
+      okText: `Delete ${ids.length}`,
+      okButtonProps: { danger: true },
+      cancelText: 'Cancel',
+      onOk: () => doDelete(ids),
+    });
+  }
 
   if (loading) {
     return <div style={{ padding: 40, textAlign: 'center' }}><Spin /></div>;
@@ -76,7 +135,7 @@ export default function DecisionCenter() {
       <div style={{ marginBottom: 12 }}>
         <Segmented
           value={filter}
-          onChange={setFilter}
+          onChange={(v) => { setFilter(v); setSelectedIds(new Set()); }}
           options={[
             { label: `All (${candidates.length})`, value: 'all' },
             { label: 'Approved', value: 'approved' },
@@ -86,15 +145,46 @@ export default function DecisionCenter() {
         />
       </div>
 
+      {filtered.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, padding: '8px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: '#334155', cursor: 'pointer', userSelect: 'none' }}>
+            <input
+              type="checkbox"
+              checked={filtered.every((c) => selectedIds.has(c.candidate_id))}
+              onChange={(e) => toggleSelectAll(filtered.map((c) => c.candidate_id), e.target.checked)}
+            />
+            Select all ({filtered.length})
+          </label>
+          {selectedIds.size > 0 && (
+            <>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#b91c1c' }}>{selectedIds.size} selected</span>
+              <Button size="small" onClick={() => setSelectedIds(new Set())}>Clear</Button>
+              <Button size="small" danger icon={<DeleteOutlined />} loading={deleting} onClick={confirmDeleteMany}>
+                Delete selected
+              </Button>
+            </>
+          )}
+        </div>
+      )}
+
       {filtered.length === 0 ? (
         <Empty description="No candidates in this state" />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
           {filtered.map((c) => {
             return (
-              <div key={c.candidate_id} className="card" style={{ padding: 16, margin: 0 }}>
+              <div key={c.candidate_id} className="card" style={{ padding: 16, margin: 0, background: selectedIds.has(c.candidate_id) ? '#eef2ff' : undefined }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                  <div style={{ fontWeight: 700, color: '#1e293b' }}>{c.applicant_name}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(c.candidate_id)}
+                      onChange={() => toggleSelect(c.candidate_id)}
+                      aria-label={`Select ${c.applicant_name}`}
+                      style={{ flexShrink: 0 }}
+                    />
+                    <div style={{ fontWeight: 700, color: '#1e293b', wordBreak: 'break-word' }}>{c.applicant_name}</div>
+                  </div>
                   {decisionTag(c.latest)}
                 </div>
                 <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
@@ -114,6 +204,9 @@ export default function DecisionCenter() {
                   {c.draft && (
                     <Button size="small" icon={<MailOutlined />} onClick={() => { setDraft(c.draft); setDraftEmail(c.email); setDraftOpen(true); }}>Draft Email</Button>
                   )}
+                  <Button size="small" danger icon={<DeleteOutlined />} loading={deleting} onClick={() => confirmDeleteOne(c)}>
+                    Delete
+                  </Button>
                 </div>
               </div>
             );

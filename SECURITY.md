@@ -4,6 +4,12 @@ Working notes for enterprise security review. **Not a public marketing page.**
 Certification claims (SOC 2 / ISO 27001) must not appear until controls + audit
 are actually in place.
 
+Proposed multi-company model + data-preservation requirements:
+[`MULTI_COMPANY_SECURITY_MODEL.md`](MULTI_COMPANY_SECURITY_MODEL.md) — **awaiting approval;
+nothing in that document is implemented yet.** Its §0 requirement (existing production
+users/admin/candidates must survive migration, verified by pre/post counts + backup) is
+non-negotiable for any tenancy work.
+
 ## Architecture (current)
 
 | Layer | Implementation |

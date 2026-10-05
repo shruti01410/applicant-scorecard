@@ -23,7 +23,8 @@ CREATE TABLE audit_logs (
       username TEXT UNIQUE, password TEXT, role TEXT NOT NULL,
       name TEXT NOT NULL, email TEXT,
       organization_id INTEGER, status TEXT DEFAULT 'active',
-      auth_provider TEXT DEFAULT 'local', last_login_at DATETIME
+      auth_provider TEXT DEFAULT 'local', last_login_at DATETIME,
+      is_deleted INTEGER DEFAULT 0, deleted_at TEXT
     );
     CREATE TABLE gmail_connections (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

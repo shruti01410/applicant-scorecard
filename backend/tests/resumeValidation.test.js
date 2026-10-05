@@ -278,3 +278,68 @@ test('20. configuration threshold is read from env', () => {
   assert.equal(typeof rv.RESUME_THRESHOLD, 'number');
   assert.ok(rv.RESUME_THRESHOLD >= 1 && rv.RESUME_THRESHOLD <= 100);
 });
+
+// ---------------------------------------------------------------------------
+// No-text (scan / image-only) policy: a real document with no extractable text is
+// ACCEPTED but never scored; stubs and unidentifiable bytes stay rejected.
+// ---------------------------------------------------------------------------
+
+const PDFDocument = require('pdfkit');
+
+function makePdf(text) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 50 });
+    const chunks = [];
+    doc.on('data', (c) => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+    doc.text(text, { width: 500 });
+    doc.end();
+  });
+}
+
+test('21. a text-less PDF (scan/image) is accepted with a no_text warning instead of rejected', async () => {
+  const buf = Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(4096, 0x20)]);
+  const result = await rv.validateResume(buf, 'scan.pdf', { threshold: 60 });
+  assert.equal(result.valid, true, 'a real document with no text layer must be accepted');
+  assert.equal(result.reason, 'no_text');
+  assert.ok(result.warning, 'carries a warning for the UI');
+  assert.ok(/scanned|image/i.test(result.warning), `warning should explain the scan case: ${result.warning}`);
+  assert.equal(result.confidenceScore, 0, 'never auto-scored without text');
+  assert.equal(rv.FRIENDLY_MESSAGES.no_text, result.warning, 'warning text comes from FRIENDLY_MESSAGES');
+});
+
+test('22. an empty stub PDF is still rejected (size floor), and garbage bytes are still rejected', async () => {
+  const stub = await rv.validateResume(fakePdf(BLANK_TEXT), 'blank.pdf', { threshold: 60 });
+  assert.equal(stub.valid, false, 'a header-only stub is not a resume');
+  assert.equal(stub.reason, 'blank');
+
+  const garbage = await rv.validateResume(Buffer.from([0x00, 0x11, 0x22, 0x33]), 'junk.pdf', { threshold: 60 });
+  assert.equal(garbage.valid, false, 'unidentifiable bytes are still rejected');
+  assert.equal(garbage.reason, 'blank');
+});
+
+test('23. a real PDF that is not a resume is rejected and the message states the confidence score', async () => {
+  const buf = await makePdf(CERTIFICATE_TEXT);
+  const result = await rv.validateResume(buf, 'certificate.pdf', { threshold: 60 });
+  assert.equal(result.valid, false);
+  assert.equal(result.reason, 'low_confidence');
+  assert.ok(result.message.includes(String(result.confidenceScore)),
+    `message should carry the score, got: ${result.message}`);
+  assert.ok(!result.message.includes('{score}'), 'placeholder must be substituted');
+});
+
+test('24. a genuine resume PDF still passes end-to-end', async () => {
+  const buf = await makePdf(EXPERIENCED_RESUME);
+  const result = await rv.validateResume(buf, 'resume.pdf', { threshold: 35 });
+  assert.equal(result.valid, true, `expected valid, got reason=${result.reason} score=${result.confidenceScore}`);
+  assert.equal(result.reason, null);
+  assert.equal(result.warning, undefined, 'no warning on a clean upload');
+  assert.ok(result.confidenceScore >= 35, `score ${result.confidenceScore}`);
+});
+
+test('25. log helpers exist for both outcomes', () => {
+  assert.equal(typeof rv.logRejection, 'function');
+  assert.equal(typeof rv.logUnscored, 'function');
+  assert.ok(rv.FRIENDLY_MESSAGES.no_text, 'no_text message exists');
+});

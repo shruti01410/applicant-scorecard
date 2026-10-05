@@ -10,18 +10,11 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [googleEnabled, setGoogleEnabled] = useState(false);
+  const [googleEnabled] = useState(true);
   const [logoFailed, setLogoFailed] = useState(false);
   const [mfaPending, setMfaPending] = useState(null); // { mfa_token }
   const [mfaCode, setMfaCode] = useState('');
   const [mfaLoading, setMfaLoading] = useState(false);
-
-  useEffect(() => {
-    import('../services/firebase')
-      .then((m) => m.firebaseLoginAvailable())
-      .then((ok) => setGoogleEnabled(ok))
-      .catch(() => setGoogleEnabled(false));
-  }, []);
 
   async function onFinish(values) {
     setLoading(true);

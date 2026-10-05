@@ -169,6 +169,7 @@ router.get('/decisions', (req, res) => {
     FROM users u
     LEFT JOIN scorecards sc ON sc.employee_id = u.id
     WHERE u.role = 'employee'
+      AND (u.is_deleted = 0 OR u.is_deleted IS NULL)
     ORDER BY u.name
   `).all();
 

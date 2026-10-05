@@ -9,7 +9,8 @@ function seededDb() {
     CREATE TABLE users (
       id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT,
       role TEXT NOT NULL, name TEXT NOT NULL, email TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      job_description_id INTEGER, resume_text TEXT, capability_match_detail TEXT
+      job_description_id INTEGER, resume_text TEXT, capability_match_detail TEXT,
+      is_archived INTEGER DEFAULT 0, is_deleted INTEGER DEFAULT 0, deleted_at TEXT
     );
     CREATE TABLE parameters (id INTEGER PRIMARY KEY, name TEXT, description TEXT, weightage INTEGER);
     CREATE TABLE scorecards (id INTEGER PRIMARY KEY AUTOINCREMENT, employee_id INTEGER NOT NULL UNIQUE,
@@ -257,5 +258,33 @@ test('DC9. unknown rejection reason code is rejected', async () => {
       body: JSON.stringify({ candidate_id: 2, decision: 'rejected', reason_code: 'made_up' }),
     });
     assert.equal(res.status, 400);
+  });
+});
+
+test('DC10. soft-deleted candidates disappear from the list and the summary', async () => {
+  const db = seededDb();
+  await withApi(db, async (base) => {
+    await req(base, '/decisions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ candidate_id: 2, decision: 'approved' }),
+    });
+    const before = await req(base, '/decisions').then((r) => r.json());
+    assert.equal(before.candidates.length, 2);
+    assert.deepEqual(before.summary, { approved: 1, rejected: 0, pending: 1 });
+
+    // exactly what DELETE /employees/:id writes
+    db.prepare(`UPDATE users SET is_deleted = 1, deleted_at = datetime('now'), is_archived = 1 WHERE id = 2`).run();
+
+    const after = await req(base, '/decisions').then((r) => r.json());
+    assert.equal(after.candidates.length, 1, 'deleted candidate must not still be listed');
+    assert.equal(after.candidates.find((c) => c.candidate_id === 2), undefined);
+    assert.deepEqual(after.summary, { approved: 0, rejected: 0, pending: 1 },
+      'summary counts must not include the deleted candidate');
+    // the decision row itself is untouched — a restore brings it back
+    assert.equal(db.prepare('SELECT COUNT(*) AS c FROM candidate_decisions').get().c, 1);
+    db.prepare('UPDATE users SET is_deleted = 0, deleted_at = NULL WHERE id = 2').run();
+    const restored = await req(base, '/decisions').then((r) => r.json());
+    assert.equal(restored.candidates.length, 2, 'restore puts the candidate back');
+    assert.equal(restored.summary.approved, 1);
   });
 });

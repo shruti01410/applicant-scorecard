@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import {
   Typography, Form, Input, Card, Button, DatePicker, Checkbox,
-  Space, message, Tag, Tabs, Select, Upload, Modal, Slider, Alert, InputNumber, Tooltip, Timeline,
+  Space, message, Tag, Tabs, Select, Upload, Modal, Slider, Alert, InputNumber, Tooltip, Timeline, Popover,
 } from 'antd';
 import { Link, useParams, useLocation } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -22,8 +22,38 @@ const { Title, Text } = Typography;
 const GROUP_META = {
   PERSON: { label: 'PERSON', title: 'Personal Competencies', hint: '10 competencies driving Candidate Fit', color: '#2563eb', sub: '35%' },
   ROLE: { label: 'ROLE', title: 'Role Competence', hint: 'Technical capability for the target role (may be N/A before technical validation)', color: '#7c3aed', sub: '40%' },
-  DEAL: { label: 'DEAL', title: 'Deal Factors', hint: 'Terms & commitment shaping Joining Probability', color: '#ea580c', sub: '—' },
+  DEAL: { label: '', title: 'Joining Factors', hint: 'Terms & commitment shaping Joining Probability', color: '#ea580c', sub: '—' },
 };
+
+/* ---- Auto-rated + Manual evaluation grid (PERSON / ROLE only) ----
+   COLS: PARAMETER | WEIGHT | AUTO | MANUAL | WEIGHTED — header and every
+   row share the same gridTemplateColumns so columns never drift. */
+const AEVAL_COLS = 'minmax(0,2.2fr) 56px 90px 110px 60px';
+const AEVAL_ROW = { display: 'grid', gridTemplateColumns: AEVAL_COLS, columnGap: 12, alignItems: 'start', padding: '14px 8px', margin: '0 -8px' };
+const AEVAL_HROW = { display: 'grid', gridTemplateColumns: AEVAL_COLS, columnGap: 12, alignItems: 'center', padding: '0 8px 8px', margin: '0 -8px', borderBottom: '1px solid #e5e7eb' };
+const AEVAL_HCELL = { fontSize: 11, fontWeight: 600, color: '#9ca3af', letterSpacing: '0.3px' };
+const AEVAL_BOX = { width: 36, textAlign: 'center', fontSize: 11, fontWeight: 500, border: '1px solid #e5e7eb', borderRadius: 6, padding: '3px 2px', color: '#374151', background: '#fff', boxSizing: 'border-box' };
+const AEVAL_TAG = {
+  auto: { background: '#f1f5f9', color: '#64748b' },
+  confirmed: { background: '#dcfce7', color: '#15803d' },
+  override: { background: '#fef3c7', color: '#92400e' },
+  manual: { background: '#ede9fe', color: '#5b21b6' },
+};
+const AEVAL_CSS = `
+  .aeval-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 999px; outline: none; cursor: pointer; background: #e5e7eb; }
+  .aeval-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 11px; height: 11px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.25), 0 0 0 2px var(--thumb-c); cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s ease; margin-top: -2.5px; }
+  .aeval-slider::-webkit-slider-thumb:hover { transform: scale(1.25); box-shadow: 0 2px 4px rgba(0,0,0,0.3), 0 0 0 2px var(--thumb-c); }
+  .aeval-slider::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; }
+  .aeval-slider::-moz-range-thumb { width: 11px; height: 11px; border-radius: 50%; background: #fff; border: 2px solid var(--thumb-c); box-shadow: 0 1px 2px rgba(0,0,0,0.25); cursor: pointer; transition: transform 0.15s ease; }
+  .aeval-slider::-moz-range-thumb:hover { transform: scale(1.2); }
+  .aeval-slider::-moz-range-track { height: 6px; border-radius: 999px; background: transparent; }
+  .aeval-slider:disabled::-webkit-slider-thumb { box-shadow: 0 1px 2px rgba(0,0,0,0.15), 0 0 0 2px #cbd5e1; cursor: default; }
+  .aeval-slider:disabled { cursor: default; }
+  .aeval-slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(59,130,246,0.25), 0 0 0 2px var(--thumb-c); }
+`;
+function aevalBadge(weight) {
+  return weight >= 12 ? { bg: '#dcfce7', text: '#15803d' } : weight >= 10 ? { bg: '#fef3c7', text: '#92400e' } : { bg: '#fce7f3', text: '#9d174d' };
+}
 
 const APPROVAL_ACTION_LABELS = {
   workflow_created: 'Workflow started',
@@ -69,6 +99,14 @@ export default function ScorePage() {
   const [capability, setCapability] = useState(null);
   const [jds, setJds] = useState([]);
   const [capLoading, setCapLoading] = useState(false);
+  const [autoScores, setAutoScores] = useState({});
+  const [touchedMap, setTouchedMap] = useState({});
+  const [evidenceText, setEvidenceText] = useState({});
+  const [confirmFor, setConfirmFor] = useState(null);
+  const [pendingValue, setPendingValue] = useState(null);
+  const [evidenceOpenFor, setEvidenceOpenFor] = useState(null);
+  const [hoverRow, setHoverRow] = useState(null);
+  const [tooltipRow, setTooltipRow] = useState(null);
   const [resumeFile, setResumeFile] = useState(null);
   const [selectedJd, setSelectedJd] = useState(null);
   const [evidenceData, setEvidenceData] = useState([]);
@@ -103,9 +141,10 @@ export default function ScorePage() {
   useEffect(() => {
     (async () => {
       try {
-        const [params, sc] = await Promise.all([
+        const [params, sc, evr] = await Promise.all([
           api.get('/api/admin/parameters'),
           api.get(`/api/admin/employees/${id}/scorecard`),
+          api.get(`/api/admin/employees/${id}/evidence`).catch(() => ({ evidence: [] })),
         ]);
         setParameters(params);
         const data = sc.scorecard;
@@ -119,18 +158,49 @@ export default function ScorePage() {
             jd_shared_date: data.jd_shared_date ? dayjs(data.jd_shared_date) : undefined,
             remarks: data.remarks,
           });
-          const scores = {}; const statuses = {};
+          const scores = {}; const statuses = {}; const notes = {};
           sc.scores.forEach(s => {
             scores[s.parameter_id] = s.score;
             statuses[s.parameter_id] = s.status || 'active';
+            if (s.note) notes[s.parameter_id] = s.note;
           });
+          const auto = {};
+          (evr.evidence || []).forEach(e => {
+            if (e && e.parameter_id != null && e.score != null) auto[Number(e.parameter_id)] = Number(e.score);
+          });
+          const touchedInit = {};
+          params.forEach(p => {
+            if (p.grp !== 'PERSON' && p.grp !== 'ROLE') return;
+            const A = auto[p.id];
+            const S = scores[p.id];
+            if (statuses[p.id] === 'na') return;
+            if (A != null) {
+              if (S != null && Number(S) !== A) touchedInit[p.id] = true;
+              else { scores[p.id] = A; statuses[p.id] = 'active'; }
+            } else if (S != null) touchedInit[p.id] = true;
+          });
+          setAutoScores(auto);
+          setTouchedMap(touchedInit);
+          setEvidenceText(notes);
           setLiveScores(scores);
           setStatusMap(statuses);
-          if (data.deal_factors) {
-            const df = {};
-            data.deal_factors.forEach(f => { df[f.factor_key] = f.score; });
-            setDealFactors(df);
+          // Hydrate DEAL factor sliders. Must read the response root (sc), not
+          // sc.scorecard — loadScorecard() doesn't carry deal_factors. Accept
+          // both shapes: the decision's array ({key,factor_key,score}) and the
+          // top-level map ({active_search: 80, ...}).
+          const rawDeal =
+            (sc.decision && sc.decision.joining_probability && sc.decision.joining_probability.deal_factors) ||
+            sc.deal_factors || data.deal_factors || {};
+          const df = {};
+          if (Array.isArray(rawDeal)) {
+            rawDeal.forEach(f => {
+              const k = f.factor_key != null ? f.factor_key : f.key;
+              if (k != null && f.score != null) df[k] = f.score;
+            });
+          } else if (typeof rawDeal === 'object') {
+            Object.keys(rawDeal).forEach(k => { if (rawDeal[k] != null) df[k] = rawDeal[k]; });
           }
+          setDealFactors(df);
           if (sc.decision) setSavedDecision(sc.decision);
         }
         api.get('/api/admin/job-descriptions').then(setJds).catch(()=>{});
@@ -164,8 +234,12 @@ export default function ScorePage() {
       const fd = new FormData();
       fd.append('resume', resumeFile);
       if (selectedJd) fd.append('job_description_id', selectedJd);
-      await api.post(`/api/admin/employees/${id}/resume`, fd);
-      message.success('Resume uploaded — match recomputed');
+      const resp = await api.post(`/api/admin/employees/${id}/resume`, fd);
+      if (resp && resp.resume_warning) {
+        message.warning(resp.resume_warning, 8);
+      } else {
+        message.success('Resume uploaded — match recomputed');
+      }
       setResumeFile(null);
       fetchCapability();
     } catch (e) { message.error(e.message); } finally { setCapLoading(false); }
@@ -190,6 +264,17 @@ export default function ScorePage() {
       });
       setLiveScores(scores);
       setStatusMap(statuses);
+      const evr = await api.get(`/api/admin/employees/${id}/evidence`).catch(() => ({ evidence: [] }));
+      const auto = {};
+      (evr.evidence || []).forEach(e => {
+        if (e && e.parameter_id != null && e.score != null) auto[Number(e.parameter_id)] = Number(e.score);
+      });
+      setAutoScores(auto);
+      setTouchedMap({});
+      setEvidenceText({});
+      setConfirmFor(null);
+      setPendingValue(null);
+      setEvidenceOpenFor(null);
       if (sc.decision) setSavedDecision(sc.decision);
       fetchCapability();
       fetchEvidence();
@@ -237,10 +322,40 @@ export default function ScorePage() {
   function setNa(pId, checked) {
     if (checked) {
       setStatusMap(prev => ({ ...prev, [pId]: 'na' }));
-      setLiveScores(prev => ({ ...prev, [pId]: null }));
-    } else {
-      setStatusMap(prev => ({ ...prev, [pId]: 'not_scored' }));
+      return;
     }
+    if (autoScores[pId] != null && !touchedMap[pId]) setLiveScores(prev => ({ ...prev, [pId]: Number(autoScores[pId]) }));
+    setStatusMap(prev => ({ ...prev, [pId]: (liveScores[pId] != null || autoScores[pId] != null) ? 'active' : 'not_scored' }));
+  }
+
+  function applyManualScore(pId, value) {
+    setLiveScores(prev => ({ ...prev, [pId]: value }));
+    setStatusMap(prev => ({ ...prev, [pId]: 'active' }));
+    setTouchedMap(prev => ({ ...prev, [pId]: true }));
+  }
+  function handleManualInput(p, rawValue) {
+    if (statusMap[p.id] === 'na') return;
+    const A = autoScores[p.id] != null ? Number(autoScores[p.id]) : null;
+    const value = Math.max(0, Math.min(100, Number(rawValue) || 0));
+    if (A != null && value > A) {
+      setConfirmFor(p.id);
+      setPendingValue(value);
+      return;
+    }
+    setConfirmFor(null);
+    setPendingValue(null);
+    applyManualScore(p.id, value);
+  }
+  function confirmManualApply() {
+    if (confirmFor == null || pendingValue == null) return;
+    applyManualScore(confirmFor, pendingValue);
+    setEvidenceOpenFor(confirmFor);
+    setConfirmFor(null);
+    setPendingValue(null);
+  }
+  function cancelManualConfirm() {
+    setConfirmFor(null);
+    setPendingValue(null);
   }
 
   function showRequiredPopup(missing) {
@@ -261,10 +376,11 @@ export default function ScorePage() {
     try {
       const scores = activeParams.map(p => {
         const status = statusMap[p.id];
+        const note = evidenceText[p.id] ? String(evidenceText[p.id]) : null;
         if (status === 'na') return { parameter_id: p.id, score: null, status: 'na', note: null };
         const v = liveScores[p.id];
         if (v == null) return { parameter_id: p.id, score: null, status: 'not_scored', note: null };
-        return { parameter_id: p.id, score: Math.round(Number(v)), status: 'active', note: null };
+        return { parameter_id: p.id, score: Math.round(Number(v)), status: 'active', note };
       });
       const deal_factors = DEAL_FACTORS.filter(f => dealFactors[f.key] != null).map(f => ({ factor_key: f.key, score: Math.round(Number(dealFactors[f.key])), note: null }));
       const resp = await api.post(`/api/admin/employees/${id}/scorecard`, JSON.stringify({
@@ -385,7 +501,28 @@ export default function ScorePage() {
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', color: '#475569', marginBottom: 6 }}>INTERVIEW FOCUS (max 3) <span style={{ fontWeight: 400 }}>— clear them after the interview is scheduled</span></div>
             <Space size={6} wrap>
               {focusArea.map((f, i) => (
-                <Tag key={i} color="gold" style={{ margin: 0, fontSize: 12, padding: '3px 8px' }}>{f.title} — {f.questions.length} q</Tag>
+                <Popover
+                  key={i}
+                  trigger="click"
+                  placement="bottomLeft"
+                  title={<span style={{ fontSize: 12.5 }}>{f.title}</span>}
+                  content={
+                    <div style={{ maxWidth: 400 }}>
+                      <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>
+                        {f.source} · ask these {f.questions.length} in the interview
+                      </div>
+                      <ol style={{ margin: 0, paddingLeft: 18 }}>
+                        {f.questions.map((q, qi) => (
+                          <li key={qi} style={{ fontSize: 12.5, lineHeight: 1.6, marginBottom: 6 }}>{q}</li>
+                        ))}
+                      </ol>
+                    </div>
+                  }
+                >
+                  <Tag color="gold" style={{ margin: 0, fontSize: 12, padding: '3px 8px', cursor: 'pointer' }}>
+                    {f.title} — {f.questions.length} q
+                  </Tag>
+                </Popover>
               ))}
             </Space>
             <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 8 }}>Cleared automatically when the interview is marked scheduled.</span>
@@ -474,7 +611,7 @@ export default function ScorePage() {
                 <Select placeholder="Link different JD" style={{ minWidth: 220 }} allowClear value={selectedJd} onChange={setSelectedJd} options={jds.map(j => ({ value: j.id, label: `${j.title}${j.client ? ` · ${j.client}` : ''}` }))} />
                 <Upload beforeUpload={file => { const r = validateResumeFileClient(file); if (!r.ok) { message.error(r.message); return Upload.LIST_IGNORE; } setResumeFile(file); return false; }} maxCount={1} accept=".pdf,.doc,.docx"><Button icon={<UploadOutlined />}>{resumeFile ? resumeFile.name : 'New resume'}</Button></Upload>
                 <Button loading={capLoading} onClick={handleResumeUpload}>Re-upload & Re-match</Button>
-                <Tooltip title="Re-run the evidence engine to regenerate editable 0-100 suggestions for the 13 SOP PERSON/ROLE parameters from JD + resume. Recruiter-rated DEAL factors are preserved.">
+                <Tooltip title="Re-run the evidence engine to regenerate editable 0-100 suggestions for the 13 SOP PERSON/ROLE parameters from JD + resume. Recruiter-rated joining factors are preserved.">
                   <Button type="primary" loading={capLoading} onClick={handleAutoRate}>Auto-rate 16 parameters</Button>
                 </Tooltip>
               </Space>
@@ -527,19 +664,30 @@ export default function ScorePage() {
 
   const parametersTab = (
     <div className="page">
+      <style>{AEVAL_CSS}</style>
       <div className="score-ledger">
         <div className="card" style={{ padding:0, overflow:'hidden' }}>
           <div className="card-title" style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding: '14px 20px' }}>
             <span>Score Parameters <Tag color="blue" style={{ marginLeft: 8, fontSize: 11 }}>{activeParams.length} active</Tag><span style={{ fontWeight:400, fontSize:11, color:'#94a3b8', marginLeft:8 }}>0-100 · N/A supported · missing params are excluded (not penalised)</span></span>
             <Tag color={pp.final_decision.includes('INTERVIEW') ? 'green' : 'orange'} style={{ fontSize: 12 }}>Pursuit {pp.display_score ?? '—'} · {pp.final_decision}</Tag>
           </div>
-          <div className="param-header-row">
-            <span>GROUP</span><span>WEIGHT</span><span>SCORE (0-100, or mark N/A)</span><span>WEIGHTED</span>
-          </div>
           {groupOrder.map(grp => {
             const meta = GROUP_META[grp];
             const rows = activeParams.filter(p => p.grp === grp);
             const groupScoreVal = liveDecision.candidate_fit[grp === 'PERSON' ? 'person_score' : grp === 'ROLE' ? 'role_score' : undefined] ?? null;
+            const isDualGroup = grp === 'PERSON' || grp === 'ROLE';
+            let sumAuto = 0; let sumFinal = 0; let sumManualBase = 0; let anyManual = false;
+            rows.forEach(p => {
+              if ((statusMap[p.id] || 'not_scored') === 'na') return;
+              const A = autoScores[p.id] != null ? Number(autoScores[p.id]) : null;
+              const E = liveScores[p.id] != null ? Number(liveScores[p.id]) : (A != null ? A : null);
+              const w = p.weightage / 100;
+              const touched = !!touchedMap[p.id];
+              if (A != null) sumAuto += A * w;
+              if (E != null) sumFinal += E * w;
+              sumManualBase += (touched ? (E != null ? E : (A != null ? A : 0)) : (A != null ? A : (E != null ? E : 0))) * w;
+              if (touched) anyManual = true;
+            });
             return (
               <Card
                 key={grp}
@@ -549,8 +697,8 @@ export default function ScorePage() {
                 style={{ margin: '10px 20px', background: grp === 'DEAL' ? '#fffdf7' : '#fff', borderRadius: 10 }}
                 title={
                   <span>
-                    <span style={{ fontWeight: 800, fontSize: 13, color: meta.color }}>{meta.label}</span>
-                    <span style={{ fontSize: 12, color: '#475569', marginLeft: 8 }}>{meta.title}</span>
+                    {meta.label ? <span style={{ fontWeight: 800, fontSize: 13, color: meta.color }}>{meta.label}</span> : null}
+                    <span style={{ fontWeight: meta.label ? 400 : 800, fontSize: meta.label ? 12 : 13, color: meta.label ? '#475569' : meta.color, marginLeft: meta.label ? 8 : 0 }}>{meta.title}</span>
                     <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 8 }}>{meta.hint}</span>
                   </span>
                 }
@@ -560,45 +708,171 @@ export default function ScorePage() {
                   </span>
                 }
               >
-                {rows.map(p => {
-                  const s = liveScores[p.id];
-                  const status = statusMap[p.id] || 'not_scored';
-                  const isNa = status === 'na';
-                  const isScored = s != null && !isNa;
-                  const contribution = isScored ? Math.round((Number(s) / 100) * p.weightage * 10) / 10 : 0;
-                  const pColor = isScored ? scoreColor(Number(s)) : NOT_ACTIVE_COLOR;
-                  return (
-                    <div key={p.id} className="param-row" style={{ padding: '10px 12px' }}>
-                      <div className="param-name-col">
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span className="param-name">{p.name}</span>
-                          {isScored && <span className="wtd-col" style={{ fontWeight: 600 }}>{contribution}</span>}
-                          {isNa && <Tag color="default" style={{ margin: 0, fontSize: 10 }}>excluded</Tag>}
-                        </div>
-                        {isScored && (
-                          <div className="gate-track" style={{ background: '#eef1f5' }}>
-                            <div className="gate-fill" style={{ width: `${Math.max(2, Number(s))}%`, background: pColor }} />
-                          </div>
-                        )}
-                        <span className="param-desc-sm" style={{ fontSize: 11, color: '#94a3b8' }}>{p.description || ''}</span>
-                      </div>
-                      <span className={`w-chip ${p.weightage >= 12 ? 'w3' : p.weightage >= 10 ? 'w2' : 'w1'}`}>{p.weightage}%</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 300, flex: 1 }}>
-                        <Slider
-                          min={0} max={100} step={1}
-                          value={isNa ? 0 : s != null ? Number(s) : 0}
-                          disabled={isNa}
-                          onChange={v => setScore(p.id, v)}
-                          style={{ flex: 1, margin: 0 }}
-                          tooltip={{ formatter: v => isNa ? 'N/A' : `${v}` }}
-                        />
-                        <InputNumber min={0} max={100} value={isNa ? null : s != null ? Number(s) : null} disabled={isNa} onChange={v => setScore(p.id, v)} style={{ width: 64 }} />
-                        <Checkbox checked={isNa} onChange={e => setNa(p.id, e.target.checked)} style={{ margin: 0, fontSize: 12 }}>N/A</Checkbox>
-                      </div>
-                      <span className="wtd-col" style={{ fontWeight: 600 }}>{isScored ? contribution : '—'}</span>
+                {isDualGroup ? (
+                  <>
+                    <div style={AEVAL_HROW}>
+                      <span style={AEVAL_HCELL}>PARAMETER</span>
+                      <span style={{ ...AEVAL_HCELL, textAlign: 'center' }}>WEIGHT</span>
+                      <span style={{ ...AEVAL_HCELL, textAlign: 'center' }}>AUTO</span>
+                      <span style={{ ...AEVAL_HCELL, textAlign: 'center' }}>MANUAL</span>
+                      <span style={{ ...AEVAL_HCELL, textAlign: 'right' }}>WEIGHTED</span>
                     </div>
-                  );
-                })}
+                    {rows.map((p, idx) => {
+                      const A = autoScores[p.id] != null ? Number(autoScores[p.id]) : null;
+                      const isNa = (statusMap[p.id] || 'not_scored') === 'na';
+                      const touched = !!touchedMap[p.id];
+                      const E = liveScores[p.id] != null ? Number(liveScores[p.id]) : (A != null ? A : null);
+                      const src = A != null
+                        ? (!touched ? 'auto' : (E != null && E === A ? 'confirmed' : 'override'))
+                        : ((touched || E != null) ? 'manual' : null);
+                      const badge = aevalBadge(p.weightage);
+                      const manualVal = touched && liveScores[p.id] != null ? Number(liveScores[p.id]) : 0;
+                      const weighted = isNa ? 0 : (E == null ? null : +((E * p.weightage) / 100).toFixed(1));
+                      const showConfirm = confirmFor === p.id && !isNa;
+                      const showEvidence = evidenceOpenFor === p.id && src === 'override';
+                      return (
+                        <div key={p.id}>
+                          <div
+                            style={{ ...AEVAL_ROW, borderBottom: idx < rows.length - 1 ? '1px solid #f5f6f8' : 'none', background: hoverRow === p.id ? '#fafbfc' : 'transparent', transition: 'background 0.12s ease' }}
+                            onMouseEnter={() => setHoverRow(p.id)}
+                            onMouseLeave={() => setHoverRow(null)}
+                          >
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: 13.5, fontWeight: 500 }}>{p.name}</div>
+                              <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 2 }}>{p.description || ''}</div>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 2 }}>
+                              <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 20, background: badge.bg, color: badge.text, textAlign: 'center', whiteSpace: 'nowrap' }}>{p.weightage}%</span>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                              {A != null ? (
+                                <>
+                                  <input
+                                    type="range" className="aeval-slider" min={0} max={100}
+                                    value={isNa ? 0 : A} disabled
+                                    style={{ '--thumb-c': '#94a3b8', background: `linear-gradient(to right, #94a3b8 ${isNa ? 0 : A}%, #eef0f3 ${isNa ? 0 : A}%)` }}
+                                  />
+                                  <input style={{ ...AEVAL_BOX, background: '#f8fafc' }} value={isNa ? '' : String(A)} readOnly placeholder="—" />
+                                </>
+                              ) : (
+                                <span style={{ fontSize: 14, color: '#cbd5e1', lineHeight: '17px' }}>—</span>
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                              <input
+                                type="range" className="aeval-slider" min={0} max={100}
+                                disabled={isNa}
+                                value={isNa ? 0 : manualVal}
+                                onChange={e => handleManualInput(p, e.target.value)}
+                                style={{ '--thumb-c': '#7c3aed', background: `linear-gradient(to right, #7c3aed ${isNa ? 0 : manualVal}%, #eef0f3 ${isNa ? 0 : manualVal}%)` }}
+                              />
+                              <input
+                                style={AEVAL_BOX}
+                                placeholder="0"
+                                disabled={isNa}
+                                value={isNa ? '' : (touched && liveScores[p.id] != null ? String(liveScores[p.id]) : '')}
+                                onChange={e => handleManualInput(p, e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }}
+                              />
+                              {src && (
+                                <div style={{ position: 'relative' }}>
+                                  <span
+                                    onClick={() => { if (src === 'override') setEvidenceOpenFor(evidenceOpenFor === p.id ? null : p.id); }}
+                                    onMouseEnter={() => { if (touched) setTooltipRow(p.id); }}
+                                    onMouseLeave={() => setTooltipRow(null)}
+                                    style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 10, whiteSpace: 'nowrap', cursor: src === 'override' ? 'pointer' : (touched ? 'help' : 'default'), ...AEVAL_TAG[src] }}
+                                  >{src}</span>
+                                  {tooltipRow === p.id && touched && (
+                                    <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)', background: '#111827', color: '#fff', fontSize: 11.5, lineHeight: 1.4, padding: '8px 10px', borderRadius: 8, width: 200, zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', textAlign: 'left', fontWeight: 400 }}>
+                                      {(evidenceText[p.id] || '').trim() ? evidenceText[p.id] : 'No evidence added yet — click to add justification.'}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                              <span style={{ color: '#2563eb', fontWeight: 600, fontSize: 13.5 }}>{weighted == null ? '—' : weighted}</span>
+                              <label style={{ fontSize: 10.5, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap' }}>
+                                <input type="checkbox" checked={isNa} onChange={e => setNa(p.id, e.target.checked)} /> N/A
+                              </label>
+                            </div>
+                          </div>
+                          {showEvidence && (
+                            <div style={{ padding: '0 0 12px' }}>
+                              <textarea
+                                placeholder="Evidence / justification for this adjustment"
+                                value={evidenceText[p.id] || ''}
+                                onChange={e => setEvidenceText(prev => ({ ...prev, [p.id]: e.target.value }))}
+                                style={{ width: '100%', minHeight: 44, fontSize: 12.5, border: '1px solid #e9ebef', borderRadius: 8, padding: 8, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' }}
+                              />
+                            </div>
+                          )}
+                          {showConfirm && (
+                            <div style={{ margin: '0 0 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: 10 }}>
+                              <div style={{ fontSize: 12, color: '#92400e', marginBottom: 8 }}>
+                                Manual score ({pendingValue}) is higher than the auto-rated score ({A}). Please provide supporting evidence before applying.
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                                <button type="button" style={{ fontSize: 12, padding: '6px 12px', borderRadius: 8, border: '1px solid #e9ebef', background: '#fff', cursor: 'pointer' }} onClick={cancelManualConfirm}>Cancel</button>
+                                <button type="button" style={{ fontSize: 12, padding: '6px 12px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', cursor: 'pointer' }} onClick={confirmManualApply}>Confirm &amp; Apply</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', margin: '14px -8px 0', padding: '12px 16px', background: '#f8fafc', borderRadius: 12, fontSize: 13, fontWeight: 500, color: '#374151' }}>
+                      <span>Auto <strong style={{ color: '#111827', fontWeight: 600 }}>{Math.round(sumAuto)}</strong></span>
+                      <span>Manual <strong style={{ color: '#111827', fontWeight: 600 }}>{anyManual ? Math.round(sumManualBase) : '—'}</strong></span>
+                      <span style={{ color: '#2563eb' }}>Final <strong style={{ color: '#111827', fontWeight: 600 }}>{Math.round(sumFinal)}</strong></span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="param-header-row" style={{ padding: '8px 12px', margin: 0 }}>
+                      <span>GROUP</span><span>WEIGHT</span><span>SCORE (0-100, or mark N/A)</span><span>WEIGHTED</span>
+                    </div>
+                    {rows.map(p => {
+                      const s = liveScores[p.id];
+                      const status = statusMap[p.id] || 'not_scored';
+                      const isNa = status === 'na';
+                      const isScored = s != null && !isNa;
+                      const contribution = isScored ? Math.round((Number(s) / 100) * p.weightage * 10) / 10 : 0;
+                      const pColor = isScored ? scoreColor(Number(s)) : NOT_ACTIVE_COLOR;
+                      return (
+                        <div key={p.id} className="param-row" style={{ padding: '10px 12px' }}>
+                          <div className="param-name-col">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span className="param-name">{p.name}</span>
+                              {isScored && <span className="wtd-col" style={{ fontWeight: 600 }}>{contribution}</span>}
+                              {isNa && <Tag color="default" style={{ margin: 0, fontSize: 10 }}>excluded</Tag>}
+                            </div>
+                            {isScored && (
+                              <div className="gate-track" style={{ background: '#eef1f5' }}>
+                                <div className="gate-fill" style={{ width: `${Math.max(2, Number(s))}%`, background: pColor }} />
+                              </div>
+                            )}
+                            <span className="param-desc-sm" style={{ fontSize: 11, color: '#94a3b8' }}>{p.description || ''}</span>
+                          </div>
+                          <span className={`w-chip ${p.weightage >= 12 ? 'w3' : p.weightage >= 10 ? 'w2' : 'w1'}`}>{p.weightage}%</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 300, flex: 1 }}>
+                            <Slider
+                              min={0} max={100} step={1}
+                              value={isNa ? 0 : s != null ? Number(s) : 0}
+                              disabled={isNa}
+                              onChange={v => setScore(p.id, v)}
+                              style={{ flex: 1, margin: 0 }}
+                              tooltip={{ formatter: v => isNa ? 'N/A' : `${v}` }}
+                            />
+                            <InputNumber min={0} max={100} value={isNa ? null : s != null ? Number(s) : null} disabled={isNa} onChange={v => setScore(p.id, v)} style={{ width: 64 }} />
+                            <Checkbox checked={isNa} onChange={e => setNa(p.id, e.target.checked)} style={{ margin: 0, fontSize: 12 }}>N/A</Checkbox>
+                          </div>
+                          <span className="wtd-col" style={{ fontWeight: 600 }}>{isScored ? contribution : '—'}</span>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
               </Card>
             );
           })}
@@ -623,7 +897,7 @@ export default function ScorePage() {
             <div style={{ fontSize: 11, letterSpacing: '0.08em', color: '#64748b', fontWeight: 600 }}>JOINING PROBABILITY</div>
             <Tag color="orange" style={{ fontSize: 16, fontWeight: 700, padding: '3px 10px', marginTop: 4 }}>{liveDecision.joining_probability.score == null ? 'Not scored' : `${liveDecision.joining_probability.display_score ?? liveDecision.joining_probability.score} · ${liveDecision.joining_probability.band}`}</Tag>
             <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>
-              Weighted mean of the 8 deal factors. Only scored factors contribute; the rest are excluded and the remaining weights renormalize — never a zero-penalty.
+              Weighted mean of the 8 joining factors. Only scored factors contribute; the rest are excluded and the remaining weights renormalize — never a zero-penalty.
             </div>
           </div>
           <Tag color={ppColor} style={{ fontSize: 13, padding: '3px 10px' }}>Pursuit {pp.display_score ?? '—'} · {pp.final_decision}</Tag>
@@ -631,7 +905,7 @@ export default function ScorePage() {
 
         <div className="card" style={{ padding: 20 }}>
           <div className="param-header-row">
-            <span>DEAL FACTOR</span><span>WEIGHT</span><span>SCORE</span>
+            <span>JOINING FACTORS</span><span>WEIGHT</span><span>SCORE</span>
           </div>
           {DEAL_FACTORS.map(f => {
             const v = dealFactors[f.key];
@@ -689,7 +963,7 @@ export default function ScorePage() {
               <Title level={4} style={{ margin:0, fontSize:18, color:'#1e293b' }}>{applicantName}</Title>
               <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
                 {[applicantPosition, applicantClient].filter(Boolean).join(' · ') || 'Candidate Review'}
-                {savedPP && <span> · Pursuit {savedPP.display_score ?? '—'} {savedPP.final_decision ? `· ${savedPP.final_decision}` : ''}</span>}
+                {savedPP && <span> · Pursuit {pp.display_score ?? '—'} · {pp.final_decision}</span>}
               </div>
             </div>
           </div>
@@ -724,7 +998,7 @@ export default function ScorePage() {
             { key: 'overview', label: 'Overview', children: overviewTab },
             { key: 'capability', label: `Candidate Evaluation${capability && capability.pct != null ? ` (${capability.pct}%)` : ''}`, children: capabilityTab },
             { key: 'parameters', label: `Score Parameters (${activeParams.length})`, children: parametersTab },
-            { key: 'deal', label: 'Deal Evaluation', children: dealTab },
+            { key: 'deal', label: 'Joining Evaluation', children: dealTab },
             { key: 'inner', label: 'Behavioral Reflection', children: <div className="ii-panel"><NumerologyTab key={id} employeeId={id} openReport={openInnerReport} /></div> },
           ]}
         />

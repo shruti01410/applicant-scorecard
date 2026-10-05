@@ -9,6 +9,7 @@ import { badge } from '../../scoreLabels';
 import { validateResumeFileClient } from '../../services/resumeCheck';
 import { decisionColors } from '../../sopModel';
 import { scoreColor } from '../../scoreStatus';
+import { EvidenceDetailsPopover } from '../../components/EvidenceDetails';
 import ResumeIntegrity from '../../components/ResumeIntegrity';
 import CompareCandidates from '../../components/CompareCandidates';
 import FilterPanel from '../../components/FilterPanel';
@@ -31,9 +32,53 @@ function PursuitCol({ row }) {
       <div style={{ marginTop:4 }}>
         <Tag color={tagColor} style={{ fontSize:10, fontWeight:700, margin:0 }}>{d.final_decision}</Tag>
       </div>
-      <div style={{ marginTop:4, fontSize:10, color:'#64748b' }}>
-        P {row.person_score ?? '—'} · R {row.role_score ?? '—'} · F {row.candidate_fit && row.candidate_fit.score != null ? row.candidate_fit.score : '—'} · J {row.joining_probability && row.joining_probability.score != null ? row.joining_probability.score : '—'} · {row.confidence_score ? row.confidence_score.label : '—'}
-      </div>
+      <EvidenceDetailsPopover
+        label="Score Breakdown — P · R · F · J · Confidence"
+        definition="P = Person Fit (PERSON 35%), R = Role Fit (ROLE 40%), F = Functional / Job Fit (JD 25%), J = Joining Probability (DEAL 8 factors). Hover each for details."
+        source={`P ${row.person_score ?? '—'} · R ${row.role_score ?? '—'} · F ${row.candidate_fit && row.candidate_fit.score != null ? row.candidate_fit.score : '—'} · J ${row.joining_probability && row.joining_probability.score != null ? row.joining_probability.score : '—'} · ${row.confidence_score ? row.confidence_score.label : '—'}`}
+        availableEvidence={[
+          row.person_score != null ? `P — PERSON: ${row.person_score}` : null,
+          row.role_score != null ? `R — ROLE: ${row.role_score}` : null,
+          row.candidate_fit && row.candidate_fit.score != null ? `F — Fit: ${row.candidate_fit.score}` : null,
+          row.joining_probability && row.joining_probability.score != null ? `J — Joining: ${row.joining_probability.score} (${row.joining_probability.band || ''})` : null,
+        ].filter(Boolean)}
+        missingEvidence={[
+          row.person_score == null ? 'P — PERSON: not yet scored' : null,
+          row.role_score == null ? 'R — ROLE: not yet scored' : null,
+          !row.candidate_fit || row.candidate_fit.score == null ? 'F — Fit: not yet calculable' : null,
+          !row.joining_probability || row.joining_probability.score == null ? 'J — Joining: no DEAL factors scored' : null,
+        ].filter(Boolean)}
+        requiredToComplete={[]}
+      >
+        <div style={{ marginTop:4, fontSize:10, color:'#64748b', cursor:'help', display:'inline-flex', gap:4, flexWrap:'wrap', alignItems:'center' }}>
+          <EvidenceDetailsPopover label="P — Person Fit" definition="Represents the candidate's person-level competency and profile fit based on the available candidate evidence." source={row.person_score != null ? `PERSON: ${row.person_score}` : 'No PERSON evidence yet'}>
+            <span style={{ cursor:'help', color: row.person_score != null ? '#2563eb' : '#94a3b8' }}>P {row.person_score ?? '—'}</span>
+          </EvidenceDetailsPopover>
+          <span>·</span>
+          <EvidenceDetailsPopover label="R — Role Fit" definition="Represents how well the candidate aligns with the requirements and expectations of the target role." source={row.role_score != null ? `ROLE: ${row.role_score}` : 'No ROLE evidence yet'}>
+            <span style={{ cursor:'help', color: row.role_score != null ? '#7c3aed' : '#94a3b8' }}>R {row.role_score ?? '—'}</span>
+          </EvidenceDetailsPopover>
+          <span>·</span>
+          <EvidenceDetailsPopover label="F — Functional / Job Fit" definition="Represents the candidate's alignment with the functional requirements, skills and JD-related evidence." source={row.candidate_fit && row.candidate_fit.score != null ? `Fit: ${row.candidate_fit.score}` : 'No functional evidence yet'}>
+            <span style={{ cursor:'help', color: row.candidate_fit && row.candidate_fit.score != null ? '#0891b2' : '#94a3b8' }}>F {row.candidate_fit && row.candidate_fit.score != null ? row.candidate_fit.score : '—'}</span>
+          </EvidenceDetailsPopover>
+          <span>·</span>
+          <EvidenceDetailsPopover label="J — Joining / Availability Fit" definition="Represents the candidate's joining-related suitability based on the available joining and availability information." source={row.joining_probability && row.joining_probability.score != null ? `Joining: ${row.joining_probability.score}` : 'No joining evidence yet'}>
+            <span style={{ cursor:'help', color: row.joining_probability && row.joining_probability.score != null ? '#ea580c' : '#94a3b8' }}>J {row.joining_probability && row.joining_probability.score != null ? row.joining_probability.score : '—'}</span>
+          </EvidenceDetailsPopover>
+          <span>·</span>
+          <EvidenceDetailsPopover
+            label={row.confidence_score ? row.confidence_score.label : 'Confidence'}
+            definition={row.confidence_score && row.confidence_score.label === 'Limited Evidence' ? 'Evidence completeness is low — scores are shown but confidence is limited.' : 'Evidence confidence for this scorecard.'}
+            source={row.confidence_score ? `${row.confidence_score.label} ${row.confidence_score.score ?? ''}/100` : 'No confidence yet'}
+            availableEvidence={row.confidence_score && row.confidence_score.label !== 'Limited Evidence' ? [`${row.confidence_score.label}`] : []}
+            missingEvidence={row.confidence_score && row.confidence_score.label === 'Limited Evidence' ? ['Some evidence missing — add interview/JD/resume to improve'] : []}
+            requiredToComplete={row.confidence_score && row.confidence_score.label === 'Limited Evidence' ? ['Add missing evidence to improve confidence'] : []}
+          >
+            <span style={{ cursor:'help', color: row.confidence_score && row.confidence_score.label === 'Limited Evidence' ? '#dc2626' : '#64748b', fontWeight:600 }}>{row.confidence_score ? row.confidence_score.label : '—'}</span>
+          </EvidenceDetailsPopover>
+        </div>
+      </EvidenceDetailsPopover>
     </div>
   );
 }
@@ -148,6 +193,7 @@ export default function ScoresPage() {
       }
       if (resp && resp.auto_rated) message.success(`Candidate added — 16 SOP parameters auto-rated from JD/Resume (evaluation ${resp.capability_match_pct}%)`);
       else message.success('Candidate added');
+      if (resp && resp.resume_warning) message.warning(resp.resume_warning, 8);
       setAddOpen(false);
       addForm.resetFields();
       fetchRows();
@@ -323,7 +369,7 @@ export default function ScoresPage() {
                         items: [
                           { key:'fav', label: row.is_favorite ? '★ Remove from Favorites' : '☆ Add to Favorites', onClick:()=>toggleFav(row.id) },
                           { key:'arch', label: row.is_archived ? '↩ Unarchive' : '📥 Archive', onClick:()=>toggleArchive(row.id) },
-                          { key:'del', label: 'Delete', danger:true, onClick:()=>{ if(confirm('Delete candidate? Removes scorecard & numerology. Cannot be undone.')) handleDelete(row.id); } },
+                          { key:'del', label: 'Delete', danger:true, onClick:()=>{ if(confirm('Delete candidate? It will be hidden from Scores but kept in database — you can restore it via API (POST /api/admin/employees/:id/restore) or from Deleted filter. Continue?')) handleDelete(row.id); } },
                         ]
                       }}
                       placement="bottomRight"
@@ -351,7 +397,7 @@ export default function ScoresPage() {
         <Form form={addForm} layout="vertical" onFinish={onAddCandidates}>
           <Form.Item name="name" label="Name" rules={[{ required: true, message: 'Required' }]}><Input placeholder="Full name" /></Form.Item>
           <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email', message: 'Valid email required' }]}><Input placeholder="Email" /></Form.Item>
-          <Form.Item name="date_of_birth" label="Date of Birth *" rules={[{ required: true, message: 'Date of Birth is required.' }]}><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="DD/MM/YYYY" disabledDate={(d) => d && d.isAfter(new Date())} /></Form.Item>
+          <Form.Item name="date_of_birth" label="Date of Birth (optional)" extra="Leave blank if unknown — you can add it later from Behavioral Reflection."><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="DD/MM/YYYY" disabledDate={(d) => d && d.isAfter(new Date())} /></Form.Item>
           <Form.Item name="position" label="Role / Position"><Input placeholder="Senior Accounts Payable" /></Form.Item>
           <Form.Item name="client" label="Client"><Input placeholder="iSHR" /></Form.Item>
           <Form.Item name="company_id" label="Company (for Deep Parameters)">

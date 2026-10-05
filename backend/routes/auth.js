@@ -170,7 +170,10 @@ router.post('/google', googleLimiter, async (req, res) => {
     console.warn('[auth] ADMIN_ALLOWED_EMAILS is not set — every verified Google email is treated as an admin.');
   }
 
-  let user = db.prepare('SELECT * FROM users WHERE LOWER(email) = LOWER(?)').get(googleUser.email);
+  // Skip soft-deleted rows: Add Candidate no longer de-duplicates, so a hidden
+  // candidate can share this email. Matching one would promote a deleted row to
+  // admin below — log into a fresh row instead.
+  let user = db.prepare('SELECT * FROM users WHERE LOWER(email) = LOWER(?) AND (is_deleted = 0 OR is_deleted IS NULL)').get(googleUser.email);
   let defaultOrg = null;
   try { defaultOrg = db.prepare("SELECT id FROM organizations WHERE slug = 'humsee'").get(); } catch (e) {}
   const orgId = defaultOrg ? defaultOrg.id : null;

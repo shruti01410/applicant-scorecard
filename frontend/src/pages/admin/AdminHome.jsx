@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 const FEATURES = [
-  { icon: '◎', title: 'Precision Scoring', desc: 'Rate candidates across 23 weighted parameters — communication, technical skills, attitude and more.' },
+  { icon: '◎', title: 'Precision Scoring', desc: 'Rate candidates across 16 weighted parameters — communication, technical skills, attitude and more.' },
   { icon: '◈', title: 'Weighted Analytics', desc: 'Three-tier multiplier system gives every parameter its true impact on the final score.' },
   { icon: '⚡', title: 'Instant Insights', desc: 'See overall performance percentages, trends, and colour-coded ratings at a glance.' },
   { icon: '⇅', title: 'Bulk Import', desc: 'Import candidates from Excel. Existing records update automatically, no duplicates.' },
@@ -36,7 +36,7 @@ export default function AdminHome() {
             <a href="#pricing" className="lp-btn-outline">See Pricing</a>
           </div>
           <div className="lp-stats">
-            <div className="lp-stat"><div className="lp-stat-value">23</div><div className="lp-stat-label">Scoring Parameters</div></div>
+            <div className="lp-stat"><div className="lp-stat-value">16</div><div className="lp-stat-label">Scoring Parameters</div></div>
             <div className="lp-stat"><div className="lp-stat-value">3×</div><div className="lp-stat-label">Weighted Multipliers</div></div>
             <div className="lp-stat"><div className="lp-stat-value">100%</div><div className="lp-stat-label">Score Transparency</div></div>
           </div>

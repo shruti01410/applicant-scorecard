@@ -1,4 +1,6 @@
 const express = require('express');
+const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const db = require('../database');
 const { authenticate, requireRole, requirePermission } = require('../middleware/auth');
 const {
@@ -225,6 +227,46 @@ router.get('/users', (req, res) => {
   res.json({ rows, roles });
 });
 
+// Add a team member: name + email + role -> generated username + strong
+// password. Org-scoped; credentials returned exactly once (never logged).
+router.post('/users', requirePermission('users.manage'), (req, res) => {
+  const name = String(req.body.name || '').trim();
+  const email = String(req.body.email || '').trim().toLowerCase();
+  const role = String(req.body.role || '');
+  if (!name || name.length < 2) return res.status(400).json({ error: 'Name is required (min 2 characters)' });
+  if (email.length > 200 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'A valid email is required' });
+  if (role !== 'admin' && role !== 'employee') return res.status(400).json({ error: 'Role must be admin or employee' });
+  const emailDup = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+  if (emailDup) return res.status(409).json({ error: 'A user with that email already exists' });
+  const username = db.makeUsername(name);
+  const password = crypto.randomBytes(12).toString('base64url').slice(0, 16) + '!A9' + crypto.randomInt(10, 99);
+  const hash = bcrypt.hashSync(password, 10);
+  const orgId = req.user.organization_id || null;
+  const r = db.prepare(
+    'INSERT INTO users (username, password, role, name, email, organization_id) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(username, hash, role, name, email, orgId);
+  const id = Number(r.lastInsertRowid);
+  logAudit({
+    ...actor(req),
+    action: 'created_user',
+    module: 'users',
+    detail: `Created ${role} ${name} (${username})`,
+  });
+  try {
+    createNotification({
+      userId: req.user.id,
+      type: 'success',
+      title: 'Team member added',
+      body: `${name} added as ${role}; username ${username}`,
+    });
+  } catch (e) {}
+  res.status(201).json({
+    ok: true,
+    user: { id, username, role, name, email, organization_id: orgId },
+    generatedPassword: password,
+  });
+});
+
 router.get('/users/:id', (req, res) => {
   const id = parseInt(req.params.id, 10);
   const user = db.prepare('SELECT id, username, role, name, email, created_at, last_login_at, status, capability_match_pct FROM users WHERE id = ?').get(id);
@@ -275,6 +317,50 @@ router.patch('/users/:id/suspend', requirePermission('users.manage'), (req, res)
   db.prepare('UPDATE users SET status = ? WHERE id = ?').run(suspended, id);
   logAudit({ ...actor(req), action: suspended === 'suspended' ? 'suspended_user' : 'reactivated_user', module: 'users', detail: target.username });
   res.json({ ok: true, suspended: suspended === 'suspended' });
+});
+
+router.delete('/users/:id', requirePermission('users.manage'), (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (id === req.user.id) return res.status(400).json({ error: 'You cannot delete your own account.' });
+  const target = db.prepare('SELECT id, username, role, name FROM users WHERE id = ?').get(id);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  if (target.role === 'admin') {
+    const adminCount = db.prepare("SELECT COUNT(*) as c FROM users WHERE role = 'admin' AND status = 'active'").get().c;
+    if (adminCount <= 1) return res.status(400).json({ error: 'Cannot delete the last active admin.' });
+  }
+  const hasScorecard = db.prepare('SELECT id FROM scorecards WHERE employee_id = ?').get(id);
+  if (hasScorecard) {
+    return res.status(400).json({ error: 'Cannot delete: this user has a scorecard with evaluations. Suspend instead, or delete the scorecard first from Scores.' });
+  }
+  try {
+    db.exec('BEGIN');
+    try { db.prepare('UPDATE scorecards SET assigned_recruiter_id = NULL WHERE assigned_recruiter_id = ?').run(id); } catch (e) {}
+    try { db.prepare('DELETE FROM approval_workflows WHERE candidate_id = ?').run(id); } catch (e) {}
+    try { db.prepare('DELETE FROM approval_workflows WHERE created_by = ?').run(id); } catch (e) {}
+    try { db.prepare('DELETE FROM approval_members WHERE user_id = ?').run(id); } catch (e) {}
+    try { db.prepare('UPDATE approval_history SET performed_by = NULL WHERE performed_by = ?').run(id); } catch (e) {}
+    try { db.prepare('UPDATE candidate_decisions SET decided_by = NULL WHERE decided_by = ?').run(id); } catch (e) {}
+    try { db.prepare('UPDATE candidate_emails SET reviewed_by = NULL WHERE reviewed_by = ?').run(id); } catch (e) {}
+    try { db.prepare('DELETE FROM gmail_connections WHERE user_id = ?').run(id); } catch (e) {}
+    try { db.prepare('DELETE FROM recruiter_profiles WHERE user_id = ?').run(id); } catch (e) {}
+    try { db.prepare('DELETE FROM numerology_profiles WHERE employee_id = ?').run(id); } catch (e) {}
+    try { db.prepare('UPDATE audit_logs SET performed_by = NULL WHERE performed_by = ?').run(id); } catch (e) {}
+    try { db.prepare('UPDATE audit_logs SET user_id = NULL WHERE user_id = ?').run(id); } catch (e) {}
+    try { db.prepare('DELETE FROM notifications WHERE user_id = ?').run(id); } catch (e) {}
+    try { db.prepare('DELETE FROM login_logs WHERE user_id = ?').run(id); } catch (e) {}
+    try { db.prepare('DELETE FROM api_metrics WHERE user_id = ?').run(id); } catch (e) {}
+    try { db.prepare('DELETE FROM activity_logs WHERE user_id = ?').run(id); } catch (e) {}
+    db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    db.exec('COMMIT');
+  } catch (e) {
+    try { db.exec('ROLLBACK'); } catch (ignored) {}
+    return res.status(500).json({ error: 'Delete failed: ' + e.message });
+  }
+  logAudit({ ...actor(req), action: 'deleted_user', module: 'users', detail: `deleted ${target.username} (${target.name})` });
+  try {
+    createNotification({ userId: req.user.id, type: 'info', title: 'User deleted', body: `${target.name} (${target.username}) was removed`, fingerprint: `user_deleted:${id}:${Date.now()}` });
+  } catch (e) {}
+  res.json({ ok: true });
 });
 
 // ----------------------------------------------------------- Roles & permissions

@@ -6,15 +6,19 @@ const fs      = require('fs');
 const { allowedOrigins } = require('./security');
 const { recordRequest, recordError } = require('./analyticsDb');
 require('./database'); // initialise & seed DB on startup
+require('./trackingDb'); // additive visitor/lead tracking tables
 
 const app = express();
 app.set('trust proxy', 1);
 
 // Security headers. CSP off for now (Ant Design uses heavy inline styles).
+// COOP must be disabled for Firebase signInWithPopup — same-origin isolates
+// the popup (firebaseapp.com) from the opener (humsee.works) and breaks postMessage.
 app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: false,
 }));
 
 const origins = allowedOrigins();
@@ -47,10 +51,13 @@ app.use((req, res, next) => {
 
 app.use('/api/auth',     require('./routes/auth'));
 app.use('/api/auth/mfa', require('./routes/mfa'));
+// Public visitor/lead tracking (rate-limited, no auth).
+app.use('/api/track',    require('./routes/track'));
 // Gmail OAuth callback must be reachable BEFORE the /api/admin routers below run
 // their JWT middleware: Google's redirect carries no Authorization header.
 app.use('/api/admin/gmail', require('./routes/gmail'));
 app.use('/api/admin',    require('./routes/admin'));
+app.use('/api/admin',    require('./routes/leads'));
 app.use('/api/admin',    require('./routes/decisions'));
 app.use('/api/admin',    require('./routes/approvals'));
 app.use('/api/admin',    require('./routes/recruiter'));
@@ -62,9 +69,14 @@ app.use('/api/admin/panel', require('./routes/adminPanel'));
 app.use('/api/employee', require('./routes/employee'));
 
 const distDir = path.join(__dirname, '..', 'frontend', 'dist');
+// Short-link redirect (/l/:code) MUST be registered before the SPA fallback
+// below, otherwise index.html would swallow the 302.
+app.use('/l', require('./routes/track').redirectRouter);
 if (fs.existsSync(distDir)) {
-  app.use(express.static(distDir));
+  app.use(express.static(distDir, { setHeaders: (res, p) => { if (p.endsWith('index.html')) { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate'); res.setHeader('Pragma', 'no-cache'); } } }));
   app.get(/^(?!\/api(?:\/|$)).*/, (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
     res.sendFile(path.join(distDir, 'index.html'));
   });
 }

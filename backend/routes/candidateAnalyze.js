@@ -81,7 +81,11 @@ router.post('/analyze', upload.single('resume_file'), async (req,res)=>{
         const { makeUsername }=require('../database');
         const username=makeUsername(candidate_name);
         const email=username+'@scorecard.com';
-        const info=db.prepare('INSERT INTO users (username,password,role,name,email,resume_text) VALUES (?,?,?,?,?,?)').run(username, require('bcryptjs').hashSync(require('../security').defaultEmployeePassword(),10),'employee',candidate_name,email,resumeText);
+        let analyzeOrgId=(req.user&&req.user.organization_id!=null)?Number(req.user.organization_id):null;
+        if(analyzeOrgId==null){try{analyzeOrgId=(db.prepare("SELECT id FROM organizations WHERE slug='humsee'").get()||{}).id;}catch(e2){}}
+        const info=analyzeOrgId!=null
+          ? db.prepare('INSERT INTO users (username,password,role,name,email,resume_text,organization_id) VALUES (?,?,?,?,?,?,?)').run(username, require('bcryptjs').hashSync(require('../security').defaultEmployeePassword(),10),'employee',candidate_name,email,resumeText,analyzeOrgId)
+          : db.prepare('INSERT INTO users (username,password,role,name,email,resume_text) VALUES (?,?,?,?,?,?)').run(username, require('bcryptjs').hashSync(require('../security').defaultEmployeePassword(),10),'employee',candidate_name,email,resumeText);
         employeeId=info.lastInsertRowid;
         db.prepare('INSERT INTO scorecards (employee_id, applicant_name, email, position) VALUES (?,?,?,?)').run(employeeId,candidate_name,email,current_role);
       }

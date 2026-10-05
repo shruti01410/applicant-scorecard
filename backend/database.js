@@ -85,7 +85,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     scorecard_id INTEGER NOT NULL,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    source TEXT DEFAULT 'manual' CHECK(source IN ('manual', 'numerology_suggested')),
+    source TEXT DEFAULT 'manual' CHECK(source IN ('manual', 'numerology_suggested', 'auto')),
     FOREIGN KEY (scorecard_id) REFERENCES scorecards(id) ON DELETE CASCADE
   );
 
@@ -384,6 +384,8 @@ try {
   if (!uCols.includes('last_login_at')) db.exec(`ALTER TABLE users ADD COLUMN last_login_at DATETIME`);
   if (!uCols.includes('mfa_enabled')) db.exec(`ALTER TABLE users ADD COLUMN mfa_enabled INTEGER NOT NULL DEFAULT 0`);
   if (!uCols.includes('mfa_secret')) db.exec(`ALTER TABLE users ADD COLUMN mfa_secret TEXT`);
+  if (!uCols.includes('is_deleted')) db.exec(`ALTER TABLE users ADD COLUMN is_deleted INTEGER DEFAULT 0`);
+  if (!uCols.includes('deleted_at')) db.exec(`ALTER TABLE users ADD COLUMN deleted_at DATETIME`);
   // seed the default organization (single-tenant HUMSEE) and backfill existing
   // users so every record carries an organization_id from now on.
   db.prepare(`INSERT OR IGNORE INTO organizations (name, slug) VALUES ('HUMSEE', 'humsee')`).run();
@@ -541,6 +543,34 @@ try {
   }
 } catch (e) {
   console.error('[parameter_evidence] migration failed:', e.message);
+}
+
+// Rebuild scorecard_updates so the source CHECK accepts 'auto' (SOP auto-rate records
+// source='auto'; the legacy CHECK only allowed manual/numerology_suggested, which made
+// the auto-rate transaction roll back with "CHECK constraint failed"). Rows written under
+// the narrower CHECK always satisfy the wider one, so the copy cannot fail.
+try {
+  const sql = (db.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='scorecard_updates'`).get() || {}).sql || '';
+  if (/CHECK\s*\(\s*source/i.test(sql) && !sql.includes("'auto'")) {
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+      ALTER TABLE scorecard_updates RENAME TO scorecard_updates_legacy;
+      CREATE TABLE scorecard_updates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        scorecard_id INTEGER NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        source TEXT DEFAULT 'manual' CHECK(source IN ('manual', 'numerology_suggested', 'auto')),
+        FOREIGN KEY (scorecard_id) REFERENCES scorecards(id) ON DELETE CASCADE
+      );
+      INSERT INTO scorecard_updates (id, scorecard_id, updated_at, source)
+        SELECT id, scorecard_id, updated_at, source FROM scorecard_updates_legacy;
+      DROP TABLE scorecard_updates_legacy;
+      PRAGMA foreign_keys = ON;
+    `);
+    console.log('[scorecard_updates] widened source CHECK to include auto');
+  }
+} catch (e) {
+  console.error('[scorecard_updates] migration failed:', e.message);
 }
 
 // ---- Seed SOP 16 parameters (10 PERSON / 3 ROLE / 3 DEAL), legacy rows read-only ----

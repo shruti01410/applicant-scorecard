@@ -465,8 +465,8 @@ function IntroScreen({ onStart }) {
    Screen 2 — Date of birth
 --------------------------------------------------------- */
 
-function DateScreen({ name, setName, dob, hasDob, onContinue, onSkip, saving }) {
-  const dobDisplay = dob ? new Date(dob + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }) : null;
+function DateScreen({ name, setName, dob, setDob, hasDob, onContinue, onSkip, saving }) {
+  const today = new Date().toISOString().slice(0, 10);
   return (
     <div className="ii-dark-screen" style={{
       width: "100%", minHeight: "100dvh", boxSizing: "border-box", background: "radial-gradient(120% 90% at 50% -10%, #16204a 0%, #070b18 55%, #05070f 100%)",
@@ -485,8 +485,8 @@ function DateScreen({ name, setName, dob, hasDob, onContinue, onSkip, saving }) 
         </div>
         <h2 style={{ fontSize: 21, fontWeight: 700, margin: "0 0 6px" }}>When were they born?</h2>
         <p style={{ fontSize: 13.5, color: "#ffffff", opacity: 0.75, lineHeight: 1.55, margin: "0 0 24px" }}>
-          Date of birth is set in Add Candidate. Without it you'll only see a
-          name-only preview.
+          Enter it here to save it to the candidate and unlock the full reflection.
+          Skip it and you'll only see a name-only preview.
         </p>
 
         <label style={{ fontSize: 12, color: "#ffffff", opacity: 0.65, display: "block", marginBottom: 6 }}>Candidate name</label>
@@ -501,26 +501,31 @@ function DateScreen({ name, setName, dob, hasDob, onContinue, onSkip, saving }) 
         />
 
         <label style={{ fontSize: 12, color: "#ffffff", opacity: 0.65, display: "block", marginBottom: 6 }}>Date of birth</label>
-        {hasDob && dob ? (
-          <div style={{
+        <input
+          type="date"
+          value={dob || ""}
+          onChange={(e) => setDob(e.target.value)}
+          max={today}
+          style={{
             width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.05)",
             border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "11px 13px",
-            color: "#fff", fontSize: 14.5, marginBottom: 8,
-          }}>
-            {dobDisplay}
-          </div>
-        ) : (
+            color: "#fff", fontSize: 14.5, marginBottom: 8, outline: "none",
+            colorScheme: "dark",
+          }}
+        />
+        {!dob && (
           <div style={{
             width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.03)",
             border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "11px 13px",
             color: "#e8b653", fontSize: 13, lineHeight: 1.5, marginBottom: 8,
           }}>
-            Date of Birth is not available. Please update the candidate's Date of Birth in Add Candidate.
+            Not set yet. Pick a date above — it is saved to this candidate, so you only do it once.
+            {hasDob ? "" : " Until then this is a name-only preview."}
           </div>
         )}
 
         <button
-          onClick={hasDob ? onContinue : onSkip}
+          onClick={dob ? onContinue : onSkip}
           disabled={!name.trim() || saving}
           style={{
             width: "100%", background: name.trim() && !saving ? "#3d5df0" : "rgba(61,93,240,0.35)", color: "#fff",
@@ -528,9 +533,9 @@ function DateScreen({ name, setName, dob, hasDob, onContinue, onSkip, saving }) 
             cursor: name.trim() && !saving ? "pointer" : "not-allowed", marginBottom: 12,
           }}
         >
-          {saving ? "Saving & computing…" : (hasDob ? "Save & continue" : "Continue — preview only")}
+          {saving ? "Saving & computing…" : (dob ? "Save & continue" : "Continue — preview only")}
         </button>
-        {hasDob && (
+        {(hasDob || dob) && (
           <button
             onClick={onSkip}
             disabled={saving}
@@ -615,9 +620,16 @@ function FilledScreen({ name, dob, hasDob, onOpenReport, onBack }) {
             width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.04)",
             border: "1px solid rgba(255,255,255,0.1)", padding: "10px 12px", borderRadius: 10,
             fontSize: 12.5, color: "#e8b653", lineHeight: 1.5, marginBottom: 12,
+            display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "center",
           }}>
-            <Calendar size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} />
-            Date of Birth is not available. Please update the candidate's Date of Birth in Add Candidate.
+            <Calendar size={14} style={{ verticalAlign: "-2px", flexShrink: 0 }} />
+            <span>No date of birth yet — this is a name-only preview.</span>
+            <button onClick={onBack} style={{
+              background: "rgba(232,182,83,0.16)", color: "#e8b653", border: "1px solid rgba(232,182,83,0.45)",
+              borderRadius: 8, padding: "5px 11px", fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+            }}>
+              Add date of birth
+            </button>
           </div>
         )}
 
@@ -957,8 +969,15 @@ function ReportScreen({ name, hasDob, scoreValue, cards, onBack, onUnlock, emplo
           <div style={{
             background: "#fff8ef", border: "1px solid #f2e2c4", borderRadius: 12, padding: "14px 16px",
             fontSize: 13, color: "#7a5c14", marginBottom: 20, lineHeight: 1.5,
+            display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
           }}>
-            Date of Birth is not available. Please update the candidate's Date of Birth in Add Candidate. This is a name-only preview.
+            <span style={{ flex: 1, minWidth: 200 }}>Date of Birth is not available, so this is a name-only preview.</span>
+            <button onClick={onUnlock} style={{
+              background: "#a4700e", color: "#fff", border: "none", borderRadius: 8,
+              padding: "7px 13px", fontSize: 13, fontWeight: 600, cursor: "pointer",
+            }}>
+              Add date of birth
+            </button>
           </div>
         )}
 
@@ -1252,7 +1271,7 @@ export default function ExactInnerIntelligence({ employeeId, openReport }) {
 
       {step === "date" && (
         <DateScreen
-          name={name} setName={setName} dob={dob} hasDob={hasDob} saving={saving}
+          name={name} setName={setName} dob={dob} setDob={setDob} hasDob={hasDob} saving={saving}
           onContinue={handleContinue}
           onSkip={() => { setHasDob(false); setStep("loading"); }}
         />

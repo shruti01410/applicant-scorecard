@@ -154,17 +154,22 @@ router.get('/employees', (req, res) => {
   if (archivedFilter === '1' || archivedFilter === 'true') whereArchived = ' AND u.is_archived = 1';
   else if (archivedFilter === '0' || archivedFilter === 'false') whereArchived = ' AND (u.is_archived = 0 OR u.is_archived IS NULL)';
   const favWhere = favOnly ? ' AND u.is_favorite = 1' : '';
+  const deletedFilter = req.query.deleted;
+  const includeDeleted = req.query.include_deleted === '1' || req.query.include_deleted === 'true';
+  let whereDeleted = '';
+  if (deletedFilter === '1' || deletedFilter === 'true') whereDeleted = ' AND u.is_deleted = 1';
+  else if (!includeDeleted) whereDeleted = ' AND (u.is_deleted = 0 OR u.is_deleted IS NULL)';
   let rows;
   const orgWhere = (req.user && req.user.organization_id != null) ? ` AND u.organization_id = ${Number(req.user.organization_id)}` : '';
   const baseSelect = `
       SELECT u.id, u.name, u.email, u.job_description_id, u.capability_match_pct,
-             u.is_favorite, u.is_archived, u.company_id, u.organization_id,
+             u.is_favorite, u.is_archived, u.is_deleted, u.deleted_at, u.company_id, u.organization_id,
              sc.applicant_name, sc.client, sc.position, sc.id AS scorecard_id,
              cnp.client_name AS company_name
       FROM users u
       LEFT JOIN scorecards sc ON sc.employee_id = u.id
       LEFT JOIN company_numerology_profiles cnp ON cnp.id = u.company_id
-      WHERE u.role = 'employee'${orgWhere}${whereArchived}${favWhere}`;
+      WHERE u.role = 'employee'${orgWhere}${whereArchived}${whereDeleted}${favWhere}`;
   if (search) {
     rows = db.prepare(`
       ${baseSelect}
@@ -207,6 +212,8 @@ router.get('/employees', (req, res) => {
       capability_match_pct: r.capability_match_pct,
       is_favorite: !!r.is_favorite,
       is_archived: !!r.is_archived,
+      is_deleted: !!r.is_deleted,
+      deleted_at: r.deleted_at || null,
       company_id: r.company_id || null,
       company_name: r.company_name || null,
       pursuit_priority: summary.pursuit_priority,
@@ -315,12 +322,146 @@ router.delete('/employees/:id', (req, res) => {
   const { users } = require('../repositories');
   const emp = users.findEmployeeWithProfile(req.params.id);
   if (!emp) return res.status(404).json({ error: 'Employee not found' });
+  // Soft-delete: keep row + scores/history for later retrieval
+  const alreadyDeleted = emp.is_deleted === 1 || emp.is_deleted === true;
+  if (alreadyDeleted) return res.json({ deleted: true, already_deleted: true });
+  try {
+    db.prepare(`UPDATE users SET is_deleted = 1, deleted_at = datetime('now'), is_archived = 1 WHERE id = ?`).run(emp.id);
+    require('../audit').logAudit({
+      performedBy: req.user.id,
+      username: req.user.username,
+      action: 'candidate_deleted',
+      targetType: 'user',
+      targetId: emp.id,
+      module: 'candidates',
+      detail: { name: emp.name, email: emp.email, soft: true },
+      req,
+    });
+    res.json({ deleted: true, soft: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Bulk soft-delete (Decision Center multi-select). Same semantics as the single
+// DELETE /employees/:id above — reversible via POST /employees/:id/restore.
+// Registered before the other /employees/:id/* routes so "bulk-delete" is never
+// captured as an :id.
+router.post('/employees/bulk-delete', (req, res) => {
+  const raw = req.body && req.body.ids;
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return res.status(400).json({ error: 'ids must be a non-empty array of candidate ids' });
+  }
+  const ids = [...new Set(raw.map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+  if (ids.length === 0) {
+    return res.status(400).json({ error: 'ids must contain positive integers' });
+  }
+  if (ids.length > 200) {
+    return res.status(400).json({ error: 'Maximum 200 candidates per bulk delete' });
+  }
+
+  const placeholders = ids.map(() => '?').join(',');
+  // role='employee' guard: never lets an admin id slip through and delete an admin.
+  const rows = db
+    .prepare(
+      `SELECT id, name, email, is_deleted FROM users
+        WHERE role = 'employee' AND id IN (${placeholders})`
+    )
+    .all(...ids);
+
+  const alreadyDeleted = rows.filter((r) => r.is_deleted).map((r) => r.id);
+  const targets = rows.filter((r) => !r.is_deleted);
+
+  if (targets.length === 0) {
+    return res.json({
+      deleted: 0,
+      already_deleted: alreadyDeleted.length,
+      not_found: ids.length - rows.length,
+      ids: [],
+    });
+  }
+
+  try {
+    db.exec('BEGIN');
+    const upd = db.prepare(
+      `UPDATE users SET is_deleted = 1, deleted_at = datetime('now'), is_archived = 1 WHERE id = ?`
+    );
+    targets.forEach((r) => upd.run(r.id));
+    db.exec('COMMIT');
+  } catch (e) {
+    try {
+      db.exec('ROLLBACK');
+    } catch (ignored) {
+      /* rollback of a failed BEGIN */
+    }
+    return res.status(500).json({ error: e.message });
+  }
+
+  require('../audit').logAudit({
+    performedBy: req.user.id,
+    username: req.user.username,
+    action: 'candidate_deleted',
+    targetType: 'bulk',
+    targetId: null,
+    module: 'candidates',
+    detail: { count: targets.length, ids: targets.map((r) => r.id), soft: true, bulk: true },
+    req,
+  });
+
+  res.json({
+    deleted: targets.length,
+    already_deleted: alreadyDeleted.length,
+    not_found: ids.length - rows.length,
+    ids: targets.map((r) => r.id),
+  });
+});
+
+router.post('/employees/:id/restore', (req, res) => {
+  const { users } = require('../repositories');
+  const emp = db.prepare('SELECT id, name, email, is_deleted FROM users WHERE id = ? AND role = ?').get(req.params.id, 'employee');
+  if (!emp) return res.status(404).json({ error: 'Employee not found' });
+  if (!emp.is_deleted) return res.json({ restored: true, already_active: true });
+  try {
+    db.prepare(`UPDATE users SET is_deleted = 0, deleted_at = NULL WHERE id = ?`).run(emp.id);
+    require('../audit').logAudit({
+      performedBy: req.user.id,
+      username: req.user.username,
+      action: 'candidate_restored',
+      targetType: 'user',
+      targetId: emp.id,
+      module: 'candidates',
+      detail: { name: emp.name, email: emp.email },
+      req,
+    });
+    res.json({ restored: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.delete('/employees/:id/permanent', (req, res) => {
+  const { users } = require('../repositories');
+  const emp = users.findEmployeeWithProfile(req.params.id);
+  if (!emp) return res.status(404).json({ error: 'Employee not found' });
+  // Permanent hard delete — only for already soft-deleted or with ?force=1
+  const force = req.query.force === '1';
+  if (!emp.is_deleted && !force) {
+    return res.status(400).json({ error: 'Candidate must be soft-deleted first. Delete again or use ?force=1 for permanent.' });
+  }
   try {
     db.exec('BEGIN');
     const sc = db.prepare('SELECT id FROM scorecards WHERE employee_id = ?').get(emp.id);
     if (sc) {
       db.prepare('DELETE FROM scores WHERE scorecard_id = ?').run(sc.id);
       db.prepare('DELETE FROM scorecard_updates WHERE scorecard_id = ?').run(sc.id);
+      db.prepare('DELETE FROM scores WHERE scorecard_id = ?').run(sc.id);
+      db.prepare('DELETE FROM scoring_snapshots WHERE scorecard_id = ?').run(sc.id);
+      db.prepare('DELETE FROM deal_factor_scores WHERE scorecard_id = ?').run(sc.id);
+      db.prepare('DELETE FROM parameter_evidence WHERE scorecard_id = ?').run(sc.id);
+      db.prepare('DELETE FROM must_have_results WHERE scorecard_id = ?').run(sc.id);
+      db.prepare('DELETE FROM candidate_decisions WHERE candidate_id = ?').run(emp.id);
+      db.prepare('DELETE FROM candidate_emails WHERE candidate_id = ?').run(emp.id);
+      db.prepare('DELETE FROM approval_workflows WHERE candidate_id = ?').run(emp.id);
       db.prepare('DELETE FROM scorecards WHERE id = ?').run(sc.id);
     }
     db.prepare('DELETE FROM numerology_profiles WHERE employee_id = ?').run(emp.id);
@@ -329,14 +470,14 @@ router.delete('/employees/:id', (req, res) => {
     require('../audit').logAudit({
       performedBy: req.user.id,
       username: req.user.username,
-      action: 'candidate_deleted',
+      action: 'candidate_permanently_deleted',
       targetType: 'user',
       targetId: emp.id,
       module: 'candidates',
       detail: { name: emp.name, email: emp.email },
       req,
     });
-    res.json({ deleted: true });
+    res.json({ deleted: true, permanent: true });
   } catch (e) {
     try { db.exec('ROLLBACK'); } catch (ignored) {}
     res.status(500).json({ error: e.message });
@@ -575,19 +716,19 @@ router.post('/employees', uploadDoc.fields([{ name: 'resume', maxCount: 1 }, { n
     const company_id = req.body.company_id ? Number(req.body.company_id) : null;
     if (!name || !email) return res.status(400).json({ error: 'name and email are required' });
     const dob = String(req.body.date_of_birth || '').trim();
-    if (!dob) return res.status(400).json({ error: 'Date of Birth is required.' });
-    const dobDate = (() => {
+    // DOB is optional at creation — it can be filled in later from the Behavioral
+    // Reflection date step. An empty value stores NULL (name-only preview until then).
+    if (dob) {
       const m = /^\d{4}-\d{2}-\d{2}$/.exec(dob);
-      if (!m) return null;
-      const [ry, rm, rd] = dob.split('-').map(Number);
-      const dt = new Date(ry, rm - 1, rd);
-      return dt.getFullYear() === ry && dt.getMonth() === rm - 1 && dt.getDate() === rd ? dt : null;
-    })();
-    const dobValid = dobDate !== null;
-    if (!dobValid) return res.status(400).json({ error: 'Date of Birth must be a valid date (YYYY-MM-DD).' });
-    if (dobDate > new Date()) return res.status(400).json({ error: 'Date of Birth cannot be in the future.' });
-    const exists = db.prepare('SELECT id FROM users WHERE email = ? OR name = ?').get(email, name);
-    if (exists) return res.status(409).json({ error: 'Candidate already exists' });
+      const parts = m ? dob.split('-').map(Number) : null;
+      const dt = parts ? new Date(parts[0], parts[1] - 1, parts[2]) : null;
+      const dobValid = dt !== null && dt.getFullYear() === parts[0] && dt.getMonth() === parts[1] - 1 && dt.getDate() === parts[2];
+      if (!dobValid) return res.status(400).json({ error: 'Date of Birth must be a valid date (YYYY-MM-DD).' });
+      if (dt > new Date()) return res.status(400).json({ error: 'Date of Birth cannot be in the future.' });
+    }
+    // No duplicate check: Add Candidate must always succeed, even when a candidate
+    // with the same name/email is already on file. makeUsername() below already
+    // de-duplicates the login (sreddy, sreddy1, ...) so each add gets its own row.
 
     const { makeUsername } = require('../database');
     let username = makeUsername(name);
@@ -622,21 +763,28 @@ router.post('/employees', uploadDoc.fields([{ name: 'resume', maxCount: 1 }, { n
 
     let resume_file_path = null;
     let resume_text = null;
+    let resumeWarning = null;
     if (resumeFile) {
       const resumeResult = await resumeValidation.validateResume(resumeFile.buffer, resumeFile.originalname);
       if (!resumeResult.valid) {
         resumeValidation.logRejection(resumeFile, resumeResult);
         return res.status(400).json({ error: resumeResult.message });
       }
+      if (resumeResult.reason === 'no_text') {
+        resumeValidation.logUnscored(resumeFile, resumeResult);
+        resumeWarning = resumeResult.warning;
+      }
       resume_text = await extractText(resumeFile.buffer, resumeFile.originalname);
       resume_file_path = saveBuffer(resumeFile.buffer, resumeFile.originalname, 'resumes');
     }
 
-    const insert = db.prepare('INSERT INTO users (username, password, role, name, email, date_of_birth, job_description_id, resume_file_path, resume_text, company_id, organization_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
     let newOrgId = null;
     try { newOrgId = (db.prepare("SELECT id FROM organizations WHERE slug = 'humsee'").get() || {}).id; } catch (e) {}
-    insert.run(username, bcrypt.hashSync(require('../security').defaultEmployeePassword(), 10), 'employee', name, email, dob, job_description_id, resume_file_path, resume_text, company_id, newOrgId);
-    const user = db.prepare('SELECT id, name, email, date_of_birth, job_description_id, capability_match_pct FROM users WHERE email = ?').get(email);
+
+    const insert = db.prepare('INSERT INTO users (username, password, role, name, email, date_of_birth, job_description_id, resume_file_path, resume_text, company_id, organization_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    const info = insert.run(username, bcrypt.hashSync(require('../security').defaultEmployeePassword(), 10), 'employee', name, email, dob || null, job_description_id, resume_file_path, resume_text, company_id, newOrgId);
+    // Keyed on the inserted id — never on email, which can now legitimately repeat.
+    const user = db.prepare('SELECT id, name, email, date_of_birth, job_description_id, capability_match_pct FROM users WHERE id = ?').get(Number(info.lastInsertRowid));
     require('../audit').logAudit({ performedBy: req.user.id, action: 'candidate_created', targetType: 'user', targetId: user.id, detail: { email, name }, req });
 
     let autoScores = null;
@@ -677,6 +825,7 @@ router.post('/employees', uploadDoc.fields([{ name: 'resume', maxCount: 1 }, { n
       }
     }
 
+    if (resumeWarning) user.resume_warning = resumeWarning;
     res.status(201).json(user);
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -692,6 +841,11 @@ router.post('/employees/:id/resume', uploadDoc.single('resume'), async (req, res
     if (!resumeResult.valid) {
       resumeValidation.logRejection(req.file, resumeResult);
       return res.status(400).json({ error: resumeResult.message });
+    }
+    let resumeWarning = null;
+    if (resumeResult.reason === 'no_text') {
+      resumeValidation.logUnscored(req.file, resumeResult);
+      resumeWarning = resumeResult.warning;
     }
     const job_description_id = req.body.job_description_id ? Number(req.body.job_description_id) : null;
     const resume_text = await extractText(req.file.buffer, req.file.originalname);
@@ -716,7 +870,7 @@ router.post('/employees/:id/resume', uploadDoc.single('resume'), async (req, res
       detail: { file: req.file.originalname },
       req,
     });
-    res.json({ resume_file_path, capability_match_pct: user.capability_match_pct, capability_match_detail: detail, matched: result ? result.matched : [], missing: result ? result.missing : [], auto_rated: !!autoScores });
+    res.json({ resume_file_path, capability_match_pct: user.capability_match_pct, capability_match_detail: detail, matched: result ? result.matched : [], missing: result ? result.missing : [], auto_rated: !!autoScores, resume_warning: resumeWarning });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -738,6 +892,22 @@ router.get('/employees/:id/capability-match', (req, res) => {
     const flags = (stored && stored.flags && stored.flags.length) ? stored.flags : detectResumeFlags(emp.resume_text, jd.description_text, { pct: match.pct, matched: match.matched, missing: match.missing });
     const body = { ...match, jdId: emp.job_description_id, flags, hiringSignals: match.hiringSignals || match.matched };
     db.prepare('UPDATE users SET capability_match_pct = ?, capability_match_detail = ? WHERE id = ?').run(match.pct, JSON.stringify(body), emp.id);
+    // Mirror the same must-have analysis into must_have_results so the table
+    // (GET /must-have, auto-rate) and the live gate read identical data.
+    if (match.mustHave && Array.isArray(match.mustHave.results) && match.mustHave.results.length) {
+      try {
+        const scRow = db.prepare('SELECT id FROM scorecards WHERE employee_id = ?').get(emp.id);
+        if (scRow) {
+          const { storeMustHaveResults } = require('../mustHaveGate');
+          db.exec('BEGIN');
+          db.prepare('DELETE FROM must_have_results WHERE scorecard_id = ?').run(scRow.id);
+          storeMustHaveResults(db, scRow.id, emp.job_description_id, match.mustHave);
+          db.exec('COMMIT');
+        }
+      } catch (e) {
+        try { db.exec('ROLLBACK'); } catch (ignored) {}
+      }
+    }
     const autoScores = sopAutoRateIfMissing(emp.id);
     res.json({ ...body, auto_rated: !!autoScores });
   } catch (e) {
@@ -766,12 +936,14 @@ router.post('/employees/:id/auto-rate', uploadDoc.single('resume'), async (req, 
     let resumeText = emp.resume_text;
     let jobDescId = req.body.job_description_id ? Number(req.body.job_description_id) : emp.job_description_id;
     const position = String(req.body.position || req.body.role || '').trim();
+    let resumeResult = null;
     if (req.file) {
-      const resumeResult = await resumeValidation.validateResume(req.file.buffer, req.file.originalname);
+      resumeResult = await resumeValidation.validateResume(req.file.buffer, req.file.originalname);
       if (!resumeResult.valid) {
         resumeValidation.logRejection(req.file, resumeResult);
         return res.status(400).json({ error: resumeResult.message });
       }
+      if (resumeResult.reason === 'no_text') resumeValidation.logUnscored(req.file, resumeResult);
       resumeText = await extractText(req.file.buffer, req.file.originalname);
       const fp = saveBuffer(req.file.buffer, req.file.originalname, 'resumes');
       db.prepare('UPDATE users SET resume_text = ?, resume_file_path = ? WHERE id = ?').run(resumeText, fp, emp.id);
@@ -779,7 +951,12 @@ router.post('/employees/:id/auto-rate', uploadDoc.single('resume'), async (req, 
     if (jobDescId && jobDescId !== emp.job_description_id) {
       db.prepare('UPDATE users SET job_description_id = ? WHERE id = ?').run(jobDescId, emp.id);
     }
-    if (!resumeText || !jobDescId) return res.status(400).json({ error: 'Need both JD and resume to auto-rate. Upload resume and select a JD.' });
+    if (!resumeText || !jobDescId) {
+      const why = (resumeResult && resumeResult.reason === 'no_text' && !resumeText)
+        ? resumeResult.warning
+        : 'Need both JD and resume to auto-rate. Upload resume and select a JD.';
+      return res.status(400).json({ error: why });
+    }
     const jd = db.prepare('SELECT description_text, title FROM job_descriptions WHERE id = ?').get(jobDescId);
     if (!jd) return res.status(404).json({ error: 'Job description not found' });
     const { pct, matched, missing, categories, requirements, mustHave } = matchResumeToJD(jd.description_text, resumeText, { jdKeywords: getActiveJDKeywords(jobDescId) });
@@ -912,7 +1089,8 @@ router.post('/employees/:id/scorecard', (req, res) => {
       if (score != null && !Number.isFinite(score)) score = null;
       if (score != null) score = Math.max(0, Math.min(100, Math.round(score)));
       const status = (s.status === 'na' || s.status === 'not_scored') ? s.status : 'active';
-      return { parameter_id: Number(s.parameter_id), score, status };
+      const note = (s.note == null || s.note === '') ? null : String(s.note).slice(0, 2000);
+      return { parameter_id: Number(s.parameter_id), score, status, note };
     });
     for (const s of cleanScores) {
       if (!s.parameter_id || (s.score == null && s.status === 'active')) {
@@ -920,20 +1098,25 @@ router.post('/employees/:id/scorecard', (req, res) => {
       }
     }
     const insertScore = db.prepare(
-      'INSERT INTO scores (scorecard_id, parameter_id, score, status) VALUES (?, ?, ?, ?)'
+      'INSERT INTO scores (scorecard_id, parameter_id, score, status, note) VALUES (?, ?, ?, ?, ?)'
     );
-    cleanScores.forEach(s => insertScore.run(scorecardId, s.parameter_id, s.score, s.status));
+    cleanScores.forEach(s => insertScore.run(scorecardId, s.parameter_id, s.score, s.status, s.note));
 
-    db.prepare('DELETE FROM deal_factor_scores WHERE scorecard_id = ?').run(scorecardId);
-    if (Array.isArray(deal_factors) && deal_factors.length > 0) {
-      const upsertFactor = db.prepare(`
-        INSERT INTO deal_factor_scores (scorecard_id, factor_key, score, note)
-        VALUES (?, ?, ?, ?)
-      `);
-      deal_factors.forEach(f => {
-        const fscore = f.score == null ? null : Math.max(0, Math.min(100, Math.round(Number(f.score))));
-        upsertFactor.run(scorecardId, f.factor_key, fscore, f.note || null);
-      });
+    // deal_factors present as an array → replace (explicit clear = []).
+    // Absent (undefined) → leave existing rows untouched, so partial payloads
+    // can never wipe already-rated DEAL factors.
+    if (Array.isArray(deal_factors)) {
+      db.prepare('DELETE FROM deal_factor_scores WHERE scorecard_id = ?').run(scorecardId);
+      if (deal_factors.length > 0) {
+        const upsertFactor = db.prepare(`
+          INSERT INTO deal_factor_scores (scorecard_id, factor_key, score, note)
+          VALUES (?, ?, ?, ?)
+        `);
+        deal_factors.forEach(f => {
+          const fscore = f.score == null ? null : Math.max(0, Math.min(100, Math.round(Number(f.score))));
+          upsertFactor.run(scorecardId, f.factor_key, fscore, f.note || null);
+        });
+      }
     }
 
     db.prepare('INSERT INTO scorecard_updates (scorecard_id, source) VALUES (?, ?)').run(scorecardId, updateSource);
@@ -978,11 +1161,62 @@ router.post('/upload-excel', upload.single('file'), (req, res) => {
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
 
+  // Headers vary between sheets ("Full Name", "Role", "Company", ...). Match
+  // keys case-insensitively instead of requiring exact Name/Email/Client/Position.
+  const headerKeyMap = {};
+  if (rows.length) {
+    Object.keys(rows[0]).forEach(k => { headerKeyMap[String(k).trim().toLowerCase()] = k; });
+  }
+  const pick = (row, aliases) => {
+    for (const a of aliases) {
+      const k = headerKeyMap[a];
+      if (k != null && String(row[k] == null ? '' : row[k]).trim() !== '') return String(row[k]).trim();
+    }
+    return '';
+  };
+
+  // If the sheet has a title row above the real header row, sheet_to_json would
+  // return junk keys and every row would be skipped. Fall back to scanning the
+  // raw grid for the header row.
+  let parsedRows = rows;
+  if (!rows.length || !rows.some(r => pick(r, ['name', 'candidate name', 'full name', 'applicant name', 'candidate']))) {
+    const grid = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false, defval: '' });
+    const nameAliases = ['name', 'candidate name', 'full name', 'applicant name', 'candidate', 'employee name'];
+    let headerIdx = -1;
+    for (let i = 0; i < Math.min(grid.length, 25); i++) {
+      const cells = (grid[i] || []).map(c => String(c).trim().toLowerCase());
+      if (cells.some(c => nameAliases.includes(c))) { headerIdx = i; break; }
+    }
+    if (headerIdx >= 0) {
+      const headers = (grid[headerIdx] || []).map(h => String(h).trim());
+      parsedRows = grid.slice(headerIdx + 1).map(cells => {
+        const obj = {};
+        headers.forEach((h, i) => { if (h) obj[h] = cells[i] == null ? '' : cells[i]; });
+        return obj;
+      }).filter(obj => Object.values(obj).some(v => String(v).trim() !== ''));
+      Object.keys(headerKeyMap).forEach(k => delete headerKeyMap[k]);
+      if (parsedRows.length) Object.keys(parsedRows[0]).forEach(k => { headerKeyMap[String(k).trim().toLowerCase()] = k; });
+    }
+  }
+
   const getAllUsernames = () => db.prepare('SELECT username FROM users').all().map(u => u.username);
-  const findUser = db.prepare('SELECT id, name FROM users WHERE email = ?');
-  const insertUser = db.prepare(
-    'INSERT INTO users (username, password, role, name, email) VALUES (?, ?, ?, ?, ?)'
+  // Scope to employees and skip soft-deleted rows: Add Candidate no longer
+  // de-duplicates, so several rows can share an email. Without this filter a
+  // hidden (deleted) row would win the lookup and the import would update a
+  // candidate the recruiter cannot see instead of creating a visible one.
+  const findUser = db.prepare(
+    "SELECT id, name FROM users WHERE email = ? AND role = 'employee' AND (is_deleted = 0 OR is_deleted IS NULL) ORDER BY id DESC LIMIT 1"
   );
+  // organization_id MUST be set — GET /employees scopes by it, so a NULL org
+  // makes the imported candidate invisible in the Scores list (silent failure).
+  let importOrgId = (req.user && req.user.organization_id != null) ? Number(req.user.organization_id) : null;
+  if (importOrgId == null) {
+    try { importOrgId = (db.prepare("SELECT id FROM organizations WHERE slug = 'humsee'").get() || {}).id; } catch (e) {}
+  }
+  const insertUser = db.prepare(
+    'INSERT INTO users (username, password, role, name, email, organization_id) VALUES (?, ?, ?, ?, ?, ?)'
+  );
+  const claimOrg = db.prepare('UPDATE users SET organization_id = COALESCE(organization_id, ?) WHERE id = ?');
 
   const uniqueEmail = (email) => {
     let username = (email || 'candidate').split('@')[0].replace(/[^a-z0-9]/gi, '').toLowerCase() || 'candidate';
@@ -996,39 +1230,58 @@ router.post('/upload-excel', upload.single('file'), (req, res) => {
   const results = [];
   let created = 0;
   let updated = 0;
+  let skipped = 0;
+  const insertScorecard = db.prepare('INSERT INTO scorecards (employee_id, applicant_name, email, client, position) VALUES (?, ?, ?, ?, ?)');
 
-  for (const row of rows) {
-    const name     = String(row.Name || row.name || '').trim();
-    const email    = String(row.Email || row.email || '').trim();
-    const client   = String(row.Client || row.client || '').trim();
-    const position = String(row.Position || row.position || '').trim();
+  for (const row of parsedRows) {
+    const name     = pick(row, ['name', 'candidate name', 'full name', 'applicant name', 'candidate', 'employee name']);
+    const email    = pick(row, ['email', 'email id', 'email address', 'mail', 'e-mail']);
+    const client   = pick(row, ['client', 'client name', 'company', 'account', 'customer']);
+    const position = pick(row, ['position', 'role', 'title', 'designation', 'job title', 'job']);
 
-    if (!name) continue;
+    if (!name) { skipped++; continue; }
 
     const existing = email ? findUser.get(email) : null;
 
     if (existing) {
+      claimOrg.run(importOrgId, existing.id);
       if (client || position) {
-        db.prepare(`
-          UPDATE scorecards SET client = ?, position = ?
-          WHERE employee_id = ?
-        `).run(client || null, position || null, existing.id);
+        const hasSc = db.prepare('SELECT id FROM scorecards WHERE employee_id = ?').get(existing.id);
+        if (hasSc) {
+          db.prepare(`UPDATE scorecards SET client = ?, position = ? WHERE employee_id = ?`)
+            .run(client || null, position || null, existing.id);
+        } else {
+          insertScorecard.run(existing.id, name, email || null, client || null, position || null);
+        }
       }
       results.push({ name, email, status: 'updated' });
       updated++;
     } else {
       const username = uniqueEmail(email);
-      insertUser.run(username, bcrypt.hashSync(require('../security').defaultEmployeePassword(), 10), 'employee', name, email);
+      if (importOrgId != null) insertUser.run(username, bcrypt.hashSync(require('../security').defaultEmployeePassword(), 10), 'employee', name, email, importOrgId);
+      else insertUser.run(username, bcrypt.hashSync(require('../security').defaultEmployeePassword(), 10), 'employee', name, email);
+      const newUser = email ? findUser.get(email) : db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+      if (newUser && (client || position)) insertScorecard.run(newUser.id, name, email || null, client || null, position || null);
       created++;
       results.push({ name, email, status: 'created' });
     }
   }
 
+  if (created === 0 && updated === 0) {
+    return res.status(400).json({
+      error: `No candidate rows found. Expected a header row with a Name column (plus optional Email, Client, Position). ${skipped} row(s) had no name.`,
+      skipped,
+      headers: parsedRows.length ? Object.keys(parsedRows[0]) : [],
+    });
+  }
+
+  const message = `${updated} record(s) updated. ${created} new employee(s) created from Excel.` + (skipped ? ` ${skipped} row(s) skipped (no Name).` : '');
   res.json({
     results,
     updated,
     created,
-    message: `${updated} record(s) updated. ${created} new employee(s) created from Excel.`,
+    skipped,
+    message,
   });
   require('../audit').logAudit({
     performedBy: req.user.id,
@@ -1036,7 +1289,7 @@ router.post('/upload-excel', upload.single('file'), (req, res) => {
     action: 'excel_import',
     targetType: 'bulk',
     module: 'candidates',
-    detail: { created, updated, file: req.file.originalname },
+    detail: { created, updated, skipped, file: req.file.originalname },
     req,
   });
 });

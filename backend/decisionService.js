@@ -23,10 +23,43 @@ function dealFactorsFor(scorecardId) {
   return map;
 }
 
-function mustHaveContext(scorecardId) {
-  const rows = scorecardId
-    ? db.prepare(`SELECT requirement_text, met, severity FROM must_have_results WHERE scorecard_id = ?`).all(scorecardId)
-    : [];
+// The UI's live gate reads capability_match_detail.mustHave (written by
+// capability-match / auto-rate / add-candidate). must_have_results is only
+// written by an explicit auto-rate, so most candidates have an empty table and
+// gate 1 silently never fired — the header then disagreed with the on-screen
+// cards. Prefer the capability detail (the same data the UI gates on), fall
+// back to the table when there is no capability detail at all.
+function capabilityMustHaveRows(employeeId) {
+  if (!employeeId) return [];
+  let detail = null;
+  try {
+    const u = db.prepare(`SELECT capability_match_detail FROM users WHERE id = ?`).get(employeeId);
+    detail = u && u.capability_match_detail;
+  } catch (e) {
+    return []; // column missing (older/test schema) — fall back to the table
+  }
+  if (!detail) return [];
+  try {
+    const parsed = JSON.parse(detail);
+    const results = (parsed && parsed.mustHave && parsed.mustHave.results) || [];
+    if (!Array.isArray(results) || results.length === 0) return [];
+    return results.map(r => ({
+      requirement_text: r.requirement,
+      met: r.met ? 1 : 0,
+      severity: r.severity || 'important',
+    }));
+  } catch (e) {
+    return [];
+  }
+}
+
+function mustHaveContext(scorecardId, employeeId) {
+  const fromCapability = capabilityMustHaveRows(employeeId);
+  const rows = fromCapability.length
+    ? fromCapability
+    : (scorecardId
+        ? db.prepare(`SELECT requirement_text, met, severity FROM must_have_results WHERE scorecard_id = ?`).all(scorecardId)
+        : []);
   const critical = rows.filter(r => r.severity === 'critical');
   const missing = critical.filter(r => !r.met).map(r => r.requirement_text);
   return {
@@ -43,7 +76,7 @@ function evidenceContext(scorecardId, employeeId) {
   if (scorecardId) {
     hasRecruiterEvidence = db.prepare(`SELECT COUNT(*) AS c FROM parameter_evidence WHERE scorecard_id = ?`).get(scorecardId).c > 0;
   }
-  const { mandatoryResolved } = mustHaveContext(scorecardId);
+  const { mandatoryResolved } = mustHaveContext(scorecardId, employeeId);
   return { jdAvailable, resumeAvailable, mandatoryResolved, hasRecruiterEvidence, references: false };
 }
 
@@ -57,7 +90,7 @@ function computeAndPersistDecision(employeeId, opts = {}) {
   const params = activeParams();
   const rowScores = scoresFor(sc.id);
   const factorScores = dealFactorsFor(sc.id);
-  const { missing } = mustHaveContext(sc.id);
+  const { missing } = mustHaveContext(sc.id, employeeId);
   const ev = evidenceContext(sc.id, employeeId);
 
   const scoredCount = Object.values(rowScores).filter(r => r.score != null && r.status === 'active').length;
