@@ -433,6 +433,88 @@ Immediate priorities:
 
 ---
 
+## 20. User Access Management (UX / product decision)
+
+Access grants are managed from a **separate admin area**, never inside the candidate
+section. Proposed entry points:
+
+- Admin Panel → **Users & Access**
+- Route: `/humsee/admin/user-access`
+
+Flow:
+
+```text
+Admin Login → User Access Management → Add / select Employee → Enter existing email
+           → Choose role + data access → Grant Access
+           → Employee logs in with the same email
+           → Existing authorized data appears immediately
+           → Future data appears per granted permissions
+```
+
+User Access table (management UI):
+
+| Employee | Email | Role | Access | Status | Action |
+|----------|-------|------|--------|--------|--------|
+| Admin | admin@scorecard.com | Super Admin | All Data | Active | Manage |
+| Shruti Rudrawar | shrutirudrawar04@gmail.com | Admin | All Data | Active | Manage |
+| Existing Employee | employee@email.com | HR | Granted Data | Active | Edit |
+| Recruiter | recruiter@email.com | Recruiter | Granted Data | Active | Edit |
+
+`+ Grant User Access` modal:
+
+```text
+Email:      [ employee@email.com ]
+Role:       [ HR ▼ ]
+Data Access: ○ All existing data  ○ Selected existing data  ○ Only future data
+Permissions: ☑ View ☑ Create ☑ Edit ☐ Delete ☐ Share
+[ Cancel ] [ Grant Access ]
+```
+
+Key requirements:
+
+1. **Existing data must be visible immediately after the grant.** If the DB already
+   contains Candidate A/B/C/D and the grant is "All existing data", the employee must
+   see all four at first login — no waiting for new records. A "Selected existing data"
+   scope (e.g. only A and C) must be per-record.
+2. **Grants apply to existing accounts.** If `employee@email.com` already exists
+   (Firebase/Google or local), do NOT create a duplicate account. Grant access on the
+   existing `users` row; on login the system checks `user_access` and returns the
+   allowed data.
+3. Grants for "Only future data" apply from the grant timestamp onward.
+4. **Server-side enforcement.** The backend must verify the authenticated user's
+   UID/role/permissions before returning anything. The frontend must never be able to
+   claim admin by itself. Every read/write re-checks `user_access` scope.
+5. Initial seeded authorities: `admin@scorecard.com` (Super Admin) and
+   `shrutirudrawar04@gmail.com` (admin). Other users get access only via explicit grant.
+6. Revoke/edit/suspend of a grant must stop data visibility immediately at next request.
+
+Implementation sketch (additive only):
+
+```sql
+CREATE TABLE IF NOT EXISTS user_access (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  granted_by INTEGER REFERENCES users(id),
+  role TEXT NOT NULL,
+  scope TEXT NOT NULL,            -- all_existing | selected | future_only
+  scope_candidate_ids TEXT,       -- JSON array for scope='selected'
+  can_view INTEGER DEFAULT 1,
+  can_create INTEGER DEFAULT 0,
+  can_edit INTEGER DEFAULT 0,
+  can_delete INTEGER DEFAULT 0,
+  can_share INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'active',   -- active | revoked | suspended
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT
+);
+```
+
+Every admin list/detail/mutation route gains a "does this user's `user_access` cover
+this record/org/action?" check. No existing rows are altered; "All existing data" for
+an org simply resolves to the rows already belonging to that org.
+
+---
+
 ## Final Model
 
 **HUMSEE Score = Multi-Company SaaS + Organization-Level Data Isolation + Individual
