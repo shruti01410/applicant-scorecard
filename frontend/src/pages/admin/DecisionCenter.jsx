@@ -119,7 +119,7 @@ export default function DecisionCenter() {
 
   return (
     <div>
-      <div className="page-header" style={{ marginBottom: 16 }}>
+      <div className="page-header" data-tour="decision-header" style={{ marginBottom: 16 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#1e293b' }}>Decision Center</h2>
           <div className="sub" style={{ fontSize: 12, color: '#64748b' }}>Approval / rejection workflow with recruiter-editable email drafts</div>

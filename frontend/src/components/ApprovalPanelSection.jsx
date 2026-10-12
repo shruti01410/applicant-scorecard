@@ -248,6 +248,7 @@ export default function ApprovalPanelSection({ candidateId, onDecisionChanged })
   const [wfLabel, wfColor, wfIcon] = WORKFLOW_TAG[workflow ? workflow.status : 'pending'];
 
   return (
+    <div data-tour="approval-panel">
     <Card
       style={{ marginBottom: 16 }}
       title={<span><AuditOutlined /> Approval &amp; Decision</span>}
@@ -396,6 +397,7 @@ export default function ApprovalPanelSection({ candidateId, onDecisionChanged })
         </Form>
       </Modal>
     </Card>
+    </div>
   );
 }
 

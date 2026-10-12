@@ -17,8 +17,10 @@ const TOUR_STEPS = [
   { sel: '[data-tour="add"]', path: '/scores', title: 'Add a candidate', body: 'Enter name, email and date of birth to add one person. Use Import from Excel to add many at once.' },
   { sel: '[data-tour="jd-header"]', path: '/job-descriptions', title: 'Job Descriptions (JDs)', body: 'JDs are what candidates are scored against. Add a JD, edit its keywords, and identical JDs are detected and rejected automatically.' },
   { sel: '[data-tour="insights-grid"]', path: '/insights', title: 'Insights', body: 'Insights compares candidates and shows Behavioural Reflection summaries side by side. Use Compare to view several at once.' },
+  { sel: '[data-tour="decision-header"]', path: '/decision-center', title: 'Decisions', body: 'The Decision Center holds the approval / rejection workflow with recruiter-editable email drafts.' },
   { sel: '[data-tour="score"]', path: '/scores', title: 'Open the scorecard', body: 'Edit Score opens the candidate scorecard. It has five tabs — let us walk through each one.' },
   { sel: '[data-tour="tab-overview"]', pathFrom: '[data-tour="score"]', title: 'Overview', body: 'Applicant details, the Pursuit Priority band, Candidate Fit and the Person/Role split at a glance.' },
+  { sel: '[data-tour="approval-panel"]', title: 'Approval & Decision', body: 'Start a single or panel approval here — assign reviewers, collect individual opinions and record the full history. Confirming the final decision creates the email draft.' },
   { sel: '[data-tour="tab-capability"]', title: 'Candidate Evaluation', body: 'The JD ↔ resume evaluation, fed straight into Candidate Fit.' },
   { sel: '[data-tour="tab-parameters"]', title: 'Score Parameters (16)', body: 'The 16 SOP parameters grouped as PERSON, ROLE and DEAL, weighted to 100%. Rate each 0–100 or mark it N/A.' },
   { sel: '[data-tour="tab-deal"]', title: 'Joining Evaluation', body: 'DEAL factors (motivation, availability, compensation and joining risks) that drive Joining Probability.' },
@@ -149,7 +151,7 @@ export default function AdminLayout() {
             <Link to="/" className="nav-link">Home</Link>
             <Link to="/scores" className="nav-link" data-tour="nav-scores">Scores</Link>
             <Link to="/job-descriptions" className="nav-link" data-tour="nav-jd">JDs</Link>
-            <Link to="/decision-center" className="nav-link">Decisions</Link>
+            <Link to="/decision-center" className="nav-link" data-tour="nav-decisions">Decisions</Link>
             <Link to="/insights" className="nav-link" data-tour="nav-insights">Insights</Link>
             <Link to="/help" className="nav-link">Help</Link>
           </div>
