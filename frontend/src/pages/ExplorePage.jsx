@@ -46,6 +46,13 @@ const TOUR = [
   },
 ];
 
+const PLANS = [
+  { name: 'Smart Shortlist', price: '₹3,999', annualPrice: '₹39,990', annualSave: 'Save ₹7,998', annualMo: '₹3,333 / mo value', specs: [['AI CV screens', '200 / mo'], ['Reports', '15 Core / mo'], ['Users', '3']], note: 'Perfect for small teams screening a handful of roles per month.', featured: false },
+  { name: 'Decision Fit', price: '₹24,999', annualPrice: '₹2,49,990', annualSave: 'Save ₹49,998', annualMo: '₹20,833 / mo value', specs: [['AI CV screens', '500 / mo'], ['Reports', '25 Decision Fit / mo'], ['Users', '5']], note: 'Most chosen — full weighted scoring with substantially deeper analysis. Save 17% on annual.', featured: true, ribbon: 'RECOMMENDED' },
+  { name: 'Leadership Intelligence', price: '₹59,999', annualPrice: '₹5,99,990', annualSave: 'Save ₹1,19,998', annualMo: '₹49,999 / mo value', specs: [['AI CV screens', '1,000 / mo'], ['Reports', '10 Advanced / mo'], ['Users', '10']], note: 'The 10 reports/month is intentional. These are advanced assessments with substantially deeper analysis — not directly comparable to the higher-volume Decision Fit reports.', featured: false },
+  { name: 'Enterprise — Super Platinum', price: '₹1,49,999', annualPrice: '₹14,99,990', annualSave: 'Save ₹2,99,998', annualMo: '₹1,24,999 / mo value', specs: [['AI CV screens', '3,000 / mo'], ['Reports', '50 Filament-ready dossiers / mo'], ['Users', '25']], note: 'Everything unlimited, white-label and SLA. Tailored onboarding for large orgs.', featured: false },
+];
+
 function TourImage({ src, alt }) {
   const [failed, setFailed] = useState(false);
   if (failed) return null;
@@ -56,6 +63,7 @@ export default function ExplorePage() {
   const [visible, setVisible] = useState(false);
   const [leadOpen, setLeadOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const [annual, setAnnual] = useState(true);
 
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), 60);
@@ -165,10 +173,29 @@ export default function ExplorePage() {
         </div>
       </section>
 
-      <section className="lp-pricing">
+      <section id="pricing" className="lp-pricing">
         <div className="lp-container">
-          <div className="lp-section-tag">Pilot</div>
-          <h2 className="lp-section-title">Try the full platform for 14 days</h2>
+          <div className="lp-section-tag">Pricing</div>
+          <h2 className="lp-section-title">Simple plans, no surprises</h2>
+          <div className="lp-billing-toggle">
+            <span className={!annual ? 'lp-billing-active' : ''}>Monthly</span>
+            <button className={`lp-billing-switch ${annual ? 'lp-billing-switch-on' : ''}`} onClick={() => setAnnual((v) => !v)} aria-label="Toggle billing"><span className="lp-billing-knob" /></button>
+            <span className={annual ? 'lp-billing-active' : ''}>Annual — get 2 months free</span>
+          </div>
+          <div className="lp-pricing-grid">
+            {PLANS.map((p) => (
+              <div key={p.name} className={`lp-price-card ${p.featured ? 'lp-price-card-featured' : ''}`}>
+                {p.ribbon && <div className="lp-price-ribbon">{p.ribbon}</div>}
+                <h3>{p.name}</h3>
+                <div className="lp-price-value">{annual ? p.annualPrice : p.price}<span>{annual ? ' / yr' : ' / mo'}</span></div>
+                {annual && <div className="lp-price-saving">{p.annualSave} • {p.annualMo}</div>}
+                <ul className="lp-price-specs">
+                  {p.specs.map(([k, v]) => <li key={k}><span>{k}</span><strong>{v}</strong></li>)}
+                </ul>
+                <p className="lp-price-note">{p.note}</p>
+              </div>
+            ))}
+          </div>
           <div className="ex-pilot-card">
             <div className="lp-pilot-tag">Limited offer</div>
             <h3>14-day assisted pilot — <strong>₹4,999</strong></h3>
