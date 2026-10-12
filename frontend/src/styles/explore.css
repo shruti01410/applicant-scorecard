@@ -65,6 +65,44 @@
   .ex-tour-nav { flex-direction: row; flex-wrap: wrap; }
 }
 
+/* ============ Hero teaser (public /explore) ============ */
+
+.ex-teaser { display: flex; justify-content: center; margin: 8px auto 0; width: 100%; }
+.ex-teaser-frame {
+  position: relative; width: 100%; max-width: 880px; margin: 0 auto;
+  border-radius: 18px; overflow: hidden; background: #0b1635;
+  border: 1px solid rgba(59, 130, 246, 0.28);
+  box-shadow: 0 30px 80px -30px rgba(30, 64, 175, 0.55);
+}
+.ex-teaser-video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; }
+.ex-teaser-play {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+  display: inline-flex; align-items: center; gap: 10px; white-space: nowrap;
+  background: rgba(6, 12, 26, 0.72); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  color: #fff; border: 1px solid rgba(96, 165, 250, 0.5); border-radius: 99px;
+  padding: 10px 20px; font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+.ex-teaser-play:hover { background: rgba(37, 99, 235, 0.85); border-color: #60a5fa; transform: translateX(-50%) translateY(-2px); }
+.ex-teaser-play-icon { font-size: 11px; }
+@media (max-width: 640px) { .ex-teaser-play { width: calc(100% - 20px); justify-content: center; bottom: 12px; } }
+
+.ex-demo-dialog {
+  width: min(92vw, 880px); max-width: 880px; padding: 0; margin: auto;
+  border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 16px;
+  background: #081231; color: #e2e8f0;
+  box-shadow: 0 40px 120px -20px rgba(0, 0, 0, 0.8);
+}
+.ex-demo-dialog::backdrop { background: rgba(3, 7, 22, 0.82); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.ex-demo-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 16px; border-bottom: 1px solid rgba(59, 130, 246, 0.2);
+  font-size: 13px; font-weight: 600; color: #93c5fd;
+}
+.ex-demo-close { background: none; border: none; color: #64748b; font-size: 24px; line-height: 1; cursor: pointer; }
+.ex-demo-close:hover { color: #fff; }
+.ex-demo-video { display: block; width: 100%; height: auto; background: #000; border-radius: 0 0 16px 16px; }
+
 /* ============ Lead form modal ============ */
 
 .lf-overlay {

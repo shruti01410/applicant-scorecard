@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import LeadForm from '../components/LeadForm';
+import HeroTeaser from '../components/HeroTeaser';
 import { trackEvent } from '../services/tracking';
 import '../styles/explore.css';
 
@@ -106,6 +107,7 @@ export default function ExplorePage() {
             <button className="lp-btn-primary lp-btn-lg" onClick={() => openLead('hero_pilot')}>Start 14-day pilot <span className="lp-arrow">→</span></button>
             <a href="#tour" className="lp-btn-outline">Take the tour</a>
           </div>
+          <HeroTeaser onWatch={() => trackEvent('demo_open', { source: 'explore_hero' })} />
           <div className="lp-stats">
             <div className="lp-stat"><div className="lp-stat-value">16</div><div className="lp-stat-label">SOP Parameters</div></div>
             <div className="lp-stat"><div className="lp-stat-value">100%</div><div className="lp-stat-label">Weighted to Score</div></div>
