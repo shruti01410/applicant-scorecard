@@ -67,7 +67,7 @@
 
 /* ============ Hero teaser (public /explore) ============ */
 
-.ex-teaser { display: flex; justify-content: center; margin: 8px auto 0; width: 100%; }
+.ex-teaser { display: flex; justify-content: center; margin: 8px auto 0; width: 100%; padding-bottom: clamp(2.5rem, 6vw, 4.5rem); }
 .ex-teaser-frame {
   position: relative; width: 100%; max-width: 880px; margin: 0 auto;
   border-radius: 18px; overflow: hidden; background: #0b1635;
