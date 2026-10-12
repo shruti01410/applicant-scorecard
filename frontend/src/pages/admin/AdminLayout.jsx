@@ -22,7 +22,13 @@ const TOUR_STEPS = [
   { sel: '[data-tour="tab-capability"]', title: 'Candidate Evaluation', body: 'The JD ↔ resume evaluation, fed straight into Candidate Fit.' },
   { sel: '[data-tour="tab-parameters"]', title: 'Score Parameters (16)', body: 'The 16 SOP parameters grouped as PERSON, ROLE and DEAL, weighted to 100%. Rate each 0–100 or mark it N/A.' },
   { sel: '[data-tour="tab-deal"]', title: 'Joining Evaluation', body: 'DEAL factors (motivation, availability, compensation and joining risks) that drive Joining Probability.' },
-  { sel: '[data-tour="tab-inner"]', title: 'Behavioural Reflection', body: 'Admin-only and informational. It is never used in Candidate Fit or Joining Probability.' },
+  { sel: '[data-tour="tab-inner"]', query: 'tab=inner&report=1', title: 'Behavioural Reflection', body: 'An admin-only reflection built from the candidate\'s name and date of birth. Read it as a reflection, not a prediction — it is never used in Candidate Fit or Joining Probability.' },
+  { sel: '[data-tour="inner-drivers"]', title: 'Behavioral Drivers', body: '4 elements, 6 categories and 6 deeper parameters, each scored and explained — showing both strengths and edges.' },
+  { sel: '[data-tour="inner-signature"]', title: 'Core Signature', body: 'The candidate\'s dominant behavioral pattern and communication archetype, distilled from the reflection.' },
+  { sel: '[data-tour="inner-categories"]', title: '6 Categories', body: 'Expression, Interaction Style, Work Character, Personality and Inner Drivers — plus Pressure Traits for the interview.' },
+  { sel: '[data-tour="inner-conclusion"]', title: 'Overall Conclusion', body: 'Green flags, worth-exploring signals, the best parts and a final read — the few lines that matter.' },
+  { sel: '[data-tour="inner-prep"]', title: 'Interview Prep', body: 'Three conversation openers generated straight from the candidate\'s own behavioral signals.' },
+  { sel: '[data-tour="inner-fit"]', title: 'Company Fit', body: 'How the candidate\'s current profile aligns with a chosen company\'s character — trajectory and brand.' },
 ];
 
 export default function AdminLayout() {

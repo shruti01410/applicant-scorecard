@@ -435,6 +435,10 @@ export default function ScorePage() {
   const [activeTab, setActiveTab] = useState(() => (
     new URLSearchParams(window.location.search).get('tab') === 'inner' ? 'inner' : 'overview'
   ));
+
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get('tab') === 'inner') setActiveTab('inner');
+  }, [location.search]);
   const applicantName = Form.useWatch('applicant_name', form) || 'Applicant';
   const applicantPosition = Form.useWatch('position', form) || '';
   const applicantClient = Form.useWatch('client', form) || '';

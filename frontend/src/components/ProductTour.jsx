@@ -78,15 +78,21 @@ export default function ProductTour({
   }, [autoStart, steps.length, storageKey, start]);
 
   // Follow the tour across pages: if a step belongs on another route, navigate
-  // there first, then let the measuring effect below wait for its anchor.
+  // there first, then let the measuring effect below wait for its anchor. A step
+  // with `query` (and no path) applies the query string to the current route
+  // (e.g. to open the Behavioural Reflection tab).
   useEffect(() => {
     if (!active) return;
-    const target = resolveTarget(steps[index]);
-    if (target && location.pathname !== target) {
+    const step = steps[index];
+    const base = resolveTarget(step) || (step && step.query ? location.pathname : null);
+    if (!base) return;
+    const desired = step.query ? `${base}?${step.query}` : base;
+    const current = step.query ? `${location.pathname}${location.search}` : location.pathname;
+    if (desired !== current) {
       setBox(null);
-      navigate(target);
+      navigate(desired);
     }
-  }, [active, index, steps, resolveTarget, navigate, location.pathname]);
+  }, [active, index, steps, resolveTarget, navigate, location.pathname, location.search]);
 
   // Bring the current target into view, retrying until it renders (it may be on
   // a page that is still loading), then re-measure once it settles.
@@ -108,7 +114,7 @@ export default function ProductTour({
     };
     const raf = requestAnimationFrame(tick);
     return () => { cancelled = true; cancelAnimationFrame(raf); };
-  }, [active, index, steps, measure, location.pathname]);
+  }, [active, index, steps, measure, location.pathname, location.search]);
 
   // Keep the spotlight aligned while the page scrolls or resizes.
   useEffect(() => {

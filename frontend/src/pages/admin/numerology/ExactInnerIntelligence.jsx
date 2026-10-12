@@ -1005,6 +1005,7 @@ function ReportScreen({ name, hasDob, scoreValue, cards, onBack, onUnlock, emplo
             return (
               <button
                 key={c.id}
+                data-tour={`inner-${c.id}`}
                 onClick={() => !locked && setActiveFeature(c)}
                 style={{
                   textAlign: "left", background: "#fff", border: "1px solid #e7eaf3", borderRadius: 14,
