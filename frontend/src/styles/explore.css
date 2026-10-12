@@ -71,11 +71,13 @@
   position: fixed; inset: 0; z-index: 1000;
   background: rgba(3, 7, 22, 0.78); backdrop-filter: blur(6px);
   display: flex; align-items: center; justify-content: center; padding: 20px;
+  overflow-y: auto; overflow-x: hidden; box-sizing: border-box;
 }
 .lf-modal {
-  position: relative; width: 100%; max-width: 520px; max-height: 92vh; overflow-y: auto;
+  position: relative; width: 100%; max-width: min(520px, 92vw); max-height: 90vh; overflow-y: auto; overflow-x: hidden;
   background: #0c1838; border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 18px;
   padding: 30px 28px 24px; color: #e2e8f0; font-family: Inter, 'Segoe UI', system-ui, sans-serif;
+  box-sizing: border-box;
 }
 .lf-close {
   position: absolute; top: 10px; right: 14px; background: none; border: none;

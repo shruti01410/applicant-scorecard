@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { submitLead, trackEvent } from '../services/tracking';
 
 const INTERESTS = ['14-day assisted pilot', 'Pricing demo', 'Enterprise / bulk', 'Partnership', 'Something else'];
@@ -21,6 +22,18 @@ export default function LeadForm({ open, onClose, source }) {
     }
   }, [open, source]);
 
+  useEffect(() => {
+    if (!open) return undefined;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open, onClose]);
+
   if (!open) return null;
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -41,8 +54,8 @@ export default function LeadForm({ open, onClose, source }) {
     }
   }
 
-  return (
-    <div className="lf-overlay" role="dialog" aria-modal="true" aria-label="Request a pilot">
+  return createPortal(
+    <div className="lf-overlay" role="dialog" aria-modal="true" aria-label="Request a pilot" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="lf-modal">
         <button className="lf-close" onClick={onClose} aria-label="Close">&times;</button>
         {done ? (
@@ -97,6 +110,7 @@ export default function LeadForm({ open, onClose, source }) {
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

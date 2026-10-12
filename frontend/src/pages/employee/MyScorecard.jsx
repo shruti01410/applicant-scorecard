@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Typography, Card, Table, Tag, Row, Col, Button, message, Empty,
+  Typography, Card, Table, Tag, Row, Col, Button, message, Empty, Statistic,
 } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
