@@ -1,0 +1,110 @@
+.tour-launch-btn {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 1000;
+  padding: 9px 16px;
+  border-radius: 999px;
+  border: 1px solid #2563eb;
+  background: #2563eb;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.35);
+}
+.tour-launch-btn:hover { background: #1d4ed8; border-color: #1d4ed8; }
+
+.tour-dim {
+  position: fixed;
+  background: rgba(15, 23, 42, 0.55);
+  z-index: 2000;
+}
+
+.tour-ring {
+  position: fixed;
+  z-index: 2001;
+  border: 2px solid #2563eb;
+  border-radius: 10px;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.92);
+  pointer-events: none;
+  transition: all 0.18s ease;
+}
+
+.tour-arrow {
+  position: fixed;
+  z-index: 2002;
+  width: 0;
+  height: 0;
+}
+
+.tour-card {
+  position: fixed;
+  z-index: 2003;
+  width: 300px;
+  max-width: calc(100vw - 24px);
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px 18px;
+  box-shadow: 0 18px 44px rgba(2, 6, 23, 0.35);
+}
+.tour-card .tour-step {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: #2563eb;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.tour-card h3 {
+  margin: 4px 0 6px;
+  font-size: 16px;
+  color: #111827;
+}
+.tour-card p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #374151;
+}
+.tour-card .tour-btns {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+.tour-btn {
+  padding: 7px 12px;
+  border-radius: 7px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  color: #111827;
+  font-size: 13px;
+  cursor: pointer;
+}
+.tour-btn.primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+  font-weight: 600;
+}
+
+.tour-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin-left: 5px;
+  border: 0;
+  border-radius: 50%;
+  background: #dbeafe;
+  color: #2563eb;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.tour-help:hover { background: #bfdbfe; }

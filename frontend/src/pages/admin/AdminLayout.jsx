@@ -124,10 +124,10 @@ export default function AdminLayout() {
           <div className="nav-brand"><img src="/humsee-logo.png" alt="" className="nav-logo" onError={(e) => { e.currentTarget.style.display = 'none'; }} />Humsee Score</div>
           <div className="nav-links" style={{ flex:1, justifyContent:'center' }}>
             <Link to="/" className="nav-link">Home</Link>
-            <Link to="/scores" className="nav-link">Scores</Link>
+            <Link to="/scores" className="nav-link" data-tour="nav-scores">Scores</Link>
             <Link to="/job-descriptions" className="nav-link">JDs</Link>
             <Link to="/decision-center" className="nav-link">Decisions</Link>
-            <Link to="/insights" className="nav-link">Insights</Link>
+            <Link to="/insights" className="nav-link" data-tour="nav-insights">Insights</Link>
           </div>
           <div className="nav-right" style={{ alignItems:'center', gap:8 }}>
             <Popover content={accountContent} title="Account" trigger="click" placement="bottomRight" arrow={false}>

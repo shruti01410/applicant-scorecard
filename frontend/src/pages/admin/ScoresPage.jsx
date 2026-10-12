@@ -14,8 +14,18 @@ import ResumeIntegrity from '../../components/ResumeIntegrity';
 import CompareCandidates from '../../components/CompareCandidates';
 import FilterPanel from '../../components/FilterPanel';
 import SortFilterDrawer from '../../components/SortFilterDrawer';
+import ProductTour from '../../components/ProductTour';
+import HelpTip from '../../components/HelpTip';
 
 const { Title } = Typography;
+
+const TOUR_STEPS = [
+  { sel: '[data-tour="nav-scores"]', title: 'Start on Scores', body: 'Scores is your candidate list. Every candidate you are evaluating lives here.' },
+  { sel: '[data-tour="add"]', title: 'Add a candidate', body: 'Enter name, email and date of birth to add one person. Use Import from Excel to add many at once.' },
+  { sel: '[data-tour="score"]', title: 'Open the scorecard', body: 'Edit Score opens the 16-parameter scorecard. Rate each parameter 0–100 or mark it N/A, then save.' },
+  { sel: '[data-tour="priority"]', title: 'Read the decision', body: 'The Pursuit Priority shows the routing band. Gates explain any cap on the band.' },
+  { sel: '[data-tour="nav-insights"]', title: 'Insights (optional)', body: 'Behavioural Reflection is admin-only and informational. It never changes the score.' },
+];
 
 function PursuitCol({ row }) {
   const d = row.pursuit_priority || {};
@@ -29,8 +39,9 @@ function PursuitCol({ row }) {
         <span className="mini-bar" style={{ width:80, height:6, background:'#e2e8f0', borderRadius:99, overflow:'hidden', display:'inline-block' }}><span className="mini-fill" style={{ width: `${Math.max(0, Math.min(100, v))}%`, backgroundColor: barColor, height:'100%', display:'block', borderRadius:99 }} /></span>
         <span className="score-pct" style={{ color: barColor, fontWeight:600, fontSize:12 }}>{v}%</span>
       </span>
-      <div style={{ marginTop:4 }}>
+      <div style={{ marginTop:4, display:'inline-flex', alignItems:'center' }}>
         <Tag color={tagColor} style={{ fontSize:10, fontWeight:700, margin:0 }}>{d.final_decision}</Tag>
+        <HelpTip title="Candidate Fit" body="PERSON × 35% + ROLE × 40% + JD match × 25%. Missing parts are dropped and the rest are re-weighted." />
       </div>
       <EvidenceDetailsPopover
         label="Score Breakdown — P · R · F · J · Confidence"
@@ -290,6 +301,7 @@ export default function ScoresPage() {
 
   return (
     <div>
+      <ProductTour steps={TOUR_STEPS} storageKey="humsee_scores_tour_done" />
       <div className="page-header" style={{ marginBottom:16 }}>
         <div>
           <h2 style={{ margin:0, fontSize:18, fontWeight:700, color:'#1e293b' }}>Employee Scorecards</h2>
@@ -297,13 +309,13 @@ export default function ScoresPage() {
         </div>
         <div className="header-actions">
           <input type="file" accept=".xlsx,.xls" hidden ref={fileRef} onChange={e=>{ const f=e.target.files&&e.target.files[0]; if(f) handleFile(f); }} />
-          <button className="btn-secondary" onClick={()=>fileRef.current&&fileRef.current.click()} disabled={importing}><span style={{ marginRight:6 }}>📄</span>{importing ? 'Processing…' : 'Import from Excel'}</button>
+          <button className="btn-secondary" data-tour="import" onClick={()=>fileRef.current&&fileRef.current.click()} disabled={importing}><span style={{ marginRight:6 }}>📄</span>{importing ? 'Processing…' : 'Import from Excel'}</button>
           {selectedIds.size >= 2 && (
             <button className="btn-primary" style={{ background:'#3d5df0' }} onClick={()=>setCompareOpen(true)}>
               Compare ({selectedIds.size})
             </button>
           )}
-          <button className="btn-primary" onClick={()=>setAddOpen(true)}>+ Add Candidate</button>
+          <button className="btn-primary" data-tour="add" onClick={()=>setAddOpen(true)}>+ Add Candidate</button>
         </div>
       </div>
 
@@ -334,7 +346,7 @@ export default function ScoresPage() {
               <th style={{ cursor:'pointer', userSelect:'none' }} onClick={()=>toggleSort('applicant_name')}>EMPLOYEE{sortIcon('applicant_name')}</th>
               <th style={{ cursor:'pointer', userSelect:'none' }} onClick={()=>toggleSort('client')}>CLIENT{sortIcon('client')}</th>
               <th style={{ cursor:'pointer', userSelect:'none' }} onClick={()=>toggleSort('position')}>POSITION{sortIcon('position')}</th>
-              <th style={{ cursor:'pointer', userSelect:'none' }} onClick={()=>toggleSort('weighted_pct')}>PURSUIT PRIORITY{sortIcon('weighted_pct')}</th>
+              <th data-tour="priority" style={{ cursor:'pointer', userSelect:'none' }} onClick={()=>toggleSort('weighted_pct')}>PURSUIT PRIORITY<HelpTip title="Pursuit Priority" body="Fit × 60% + Joining Probability × 40%, then gates. The band is Priority Interview (80+), Interview (65–79), Verify (50–64) or Hold (below 50)." />{sortIcon('weighted_pct')}</th>
               <th style={{ width:110 }}>ACTION</th>
             </tr>
           </thead>
@@ -362,7 +374,7 @@ export default function ScoresPage() {
                 <td><PursuitCol row={row} /></td>
                 <td>
                   <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                    <Link to={`/scores/${row.id}`}><button className={row.scorecard_id ? 'btn-edit' : 'btn-score'}>{row.scorecard_id ? 'Edit Score' : 'Score Now'}</button></Link>
+                    <Link to={`/scores/${row.id}`}><button className={row.scorecard_id ? 'btn-edit' : 'btn-score'} data-tour="score">{row.scorecard_id ? 'Edit Score' : 'Score Now'}</button></Link>
                     <Dropdown
                       trigger={['click']}
                       menu={{
