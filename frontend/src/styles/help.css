@@ -1,0 +1,248 @@
+.help-page .help-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.help-page .help-head h2 {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+.help-page .help-head .sub {
+  color: #64748b;
+  font-size: 14px;
+  margin-top: 4px;
+}
+.help-page .help-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+.help-page .help-toc {
+  position: sticky;
+  top: 76px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px;
+  max-height: calc(100vh - 100px);
+  overflow: auto;
+}
+.help-page .help-search {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+}
+.help-page .help-search:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+.help-page .help-toc a {
+  display: block;
+  padding: 7px 10px;
+  border-radius: 8px;
+  color: #334155;
+  text-decoration: none;
+  font-size: 14px;
+}
+.help-page .help-toc a:hover {
+  background: #eff6ff;
+  color: #2563eb;
+}
+.help-page .help-toc a.active {
+  background: #eff6ff;
+  color: #2563eb;
+  font-weight: 600;
+}
+.help-page .help-toc a.hidden {
+  display: none;
+}
+.help-page .help-main {
+  min-width: 0;
+}
+.help-page section.help-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 22px 26px;
+  margin-bottom: 20px;
+  scroll-margin-top: 76px;
+}
+.help-page section.help-card.hidden {
+  display: none;
+}
+.help-page .help-tag {
+  display: inline-block;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #2563eb;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.help-page .help-card h2 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  color: #1e293b;
+}
+.help-page .help-card h3 {
+  font-size: 15px;
+  margin: 18px 0 6px;
+  color: #334155;
+}
+.help-page .help-card p,
+.help-page .help-card li {
+  line-height: 1.6;
+  font-size: 15px;
+  color: #334155;
+}
+.help-page .help-card ul {
+  margin: 8px 0 0 20px;
+  padding: 0;
+}
+.help-page table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  margin-top: 8px;
+}
+.help-page th,
+.help-page td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid #e2e8f0;
+  vertical-align: top;
+}
+.help-page th {
+  background: #f1f5f9;
+  font-weight: 600;
+  color: #475569;
+}
+.help-page .help-tip {
+  background: #fff7ed;
+  border-left: 4px solid #f97316;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 14px;
+  margin: 12px 0;
+  color: #7c2d12;
+}
+.help-page .help-step {
+  display: flex;
+  gap: 12px;
+  margin: 10px 0;
+  align-items: flex-start;
+}
+.help-page .help-step b {
+  flex: 0 0 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+}
+.help-page .help-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+.help-page .help-mini {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 14px;
+  color: #334155;
+}
+.help-page details {
+  border-bottom: 1px solid #e2e8f0;
+  padding: 10px 0;
+}
+.help-page details:last-child {
+  border-bottom: none;
+}
+.help-page summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #1e293b;
+}
+.help-page .help-empty {
+  padding: 24px;
+  text-align: center;
+  color: #94a3b8;
+}
+
+/* Quick tour modal */
+.help-tour {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2003;
+  padding: 16px;
+}
+.help-tour .help-tour-box {
+  background: #fff;
+  border-radius: 14px;
+  max-width: 440px;
+  width: 100%;
+  padding: 24px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+}
+.help-tour .help-tour-dots span {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  margin-right: 6px;
+}
+.help-tour .help-tour-dots span.on {
+  background: #2563eb;
+}
+.help-tour .help-tour-btns {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin-top: 18px;
+}
+.help-tour .help-tour-btns button {
+  padding: 9px 16px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  font-family: inherit;
+}
+.help-tour .help-tour-btns .primary {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+
+@media (max-width: 760px) {
+  .help-page .help-layout {
+    grid-template-columns: 1fr;
+  }
+  .help-page .help-toc {
+    position: static;
+    max-height: none;
+  }
+}

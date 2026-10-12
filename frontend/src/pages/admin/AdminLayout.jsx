@@ -128,6 +128,7 @@ export default function AdminLayout() {
             <Link to="/job-descriptions" className="nav-link">JDs</Link>
             <Link to="/decision-center" className="nav-link">Decisions</Link>
             <Link to="/insights" className="nav-link" data-tour="nav-insights">Insights</Link>
+            <Link to="/help" className="nav-link">Help</Link>
           </div>
           <div className="nav-right" style={{ alignItems:'center', gap:8 }}>
             <Popover content={accountContent} title="Account" trigger="click" placement="bottomRight" arrow={false}>

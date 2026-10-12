@@ -13,6 +13,7 @@ import CapabilityMatchPage from './pages/admin/CapabilityMatchPage';
 import JobDescriptions from './pages/admin/JobDescriptions';
 import InsightsPage from './pages/admin/InsightsPage';
 import DecisionCenter from './pages/admin/DecisionCenter';
+import HelpPage from './pages/admin/HelpPage';
 import MyScorecard from './pages/employee/MyScorecard';
 import './styles/app.css';
 
@@ -64,6 +65,7 @@ function AdminRoutes() {
         <Route path="/job-descriptions" element={<JobDescriptions />} />
         <Route path="/decision-center" element={<DecisionCenter />} />
         <Route path="/insights" element={<InsightsPage />} />
+        <Route path="/help" element={<HelpPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
