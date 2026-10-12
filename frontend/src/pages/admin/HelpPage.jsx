@@ -344,7 +344,7 @@ export default function HelpPage() {
           <h2>Help Center</h2>
           <div className="sub">Everything about Humsee Score — scoring, the scorecard, decisions and troubleshooting.</div>
         </div>
-        <button className="btn-primary" type="button" onClick={() => setTourOpen(true)}>▶ Take the quick tour</button>
+        <button className="btn-primary" type="button" onClick={() => setTourOpen(true)}>▶ Start tour</button>
       </div>
 
       <div className="help-layout">
