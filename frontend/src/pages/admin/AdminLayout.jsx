@@ -167,7 +167,7 @@ export default function AdminLayout() {
       <Content className={fullBleed ? 'page-full' : 'page'} style={fullBleed ? { paddingTop: 0 } : { paddingTop: 24 }}>
         <Outlet />
       </Content>
-      <ProductTour steps={TOUR_STEPS} storageKey="humsee_scores_tour_done" />
+      <ProductTour steps={TOUR_STEPS} storageKey="humsee_scores_tour_done" showLaunch={false} />
     </Layout>
   );
 }

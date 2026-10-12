@@ -16,6 +16,7 @@ export default function ProductTour({
   steps = [],
   storageKey,
   autoStart = true,
+  showLaunch = true,
   launchLabel = '▶ Start tour',
 }) {
   const [active, setActive] = useState(false);
@@ -65,6 +66,14 @@ export default function ProductTour({
     setActive(false);
     setBox(null);
   }, []);
+
+  // Allow the tour to be started from anywhere (e.g. the Help Center button)
+  // without rendering the floating launcher on every page.
+  useEffect(() => {
+    const onStart = () => start();
+    window.addEventListener('humsee:start-tour', onStart);
+    return () => window.removeEventListener('humsee:start-tour', onStart);
+  }, [start]);
 
   // Auto-open once per browser (first visit). No cleanup on purpose: under
   // StrictMode dev double-invoke the ref guard prevents a second schedule.
@@ -140,6 +149,7 @@ export default function ProductTour({
   const back = () => { if (index > 0) setIndex(index - 1); };
 
   if (!active || !steps.length) {
+    if (!showLaunch) return null;
     return (
       <button type="button" className="tour-launch-btn" onClick={start}>{launchLabel}</button>
     );

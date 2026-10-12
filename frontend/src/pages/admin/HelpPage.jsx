@@ -1,20 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useEffect, useMemo, useState } from 'react';
 import '../../styles/help.css';
-
-const TOUR_STEPS = [
-  { title: 'Welcome to Humsee Score', body: 'This short tour shows you where things are. You can reopen it any time from the blue Start tour button at the top.' },
-  { title: 'Scores: your candidate list', body: 'Every candidate lives here. Search, filter, or add one with + Add Candidate. Click Score Now to open a scorecard.' },
-  { title: 'The scorecard', body: 'Each scorecard has tabs: Overview, Candidate Evaluation, Score Parameters (16), Joining Evaluation and Behavioural Reflection. Let us walk through them.' },
-  { title: 'Overview', body: 'Overview summarises the candidate: applicant details, the Pursuit Priority band, Candidate Fit and the Person/Role split at a glance.' },
-  { title: 'Candidate Evaluation', body: 'Candidate Evaluation holds the 16 SOP parameters (PERSON, ROLE, DEAL) with the linked JD and resume scoring. Rate each 0-100 or mark it N/A, then auto-rate from JD + resume if you like.' },
-  { title: 'Joining Evaluation', body: 'Joining Evaluation captures the DEAL factors (motivation, availability, compensation and joining risks) that drive Joining Probability.' },
-  { title: 'Behavioural Reflection', body: 'Behavioural Reflection is an admin-only, informational view based on date of birth. It is never used in Candidate Fit or Joining Probability.' },
-  { title: 'Read the decision', body: 'The Pursuit Priority card shows the routing band and any gate warnings. Gates explain why a band was capped.' },
-  { title: 'Job Descriptions (JDs)', body: 'JDs are what candidates are scored against. Add a JD, edit its keywords, and identical JDs are detected and rejected automatically.' },
-  { title: 'Insights', body: 'Insights compares candidates and shows reflection summaries side by side. Use Compare to view several candidates at once.' },
-  { title: 'Decisions and help', body: 'Approvals and email drafts are in Decisions. Use this Help Center any time for any feature you forget. Happy scoring!' },
-];
 
 const SECTIONS = [
   {
@@ -265,55 +250,9 @@ const SECTIONS = [
   },
 ];
 
-function QuickTour({ open, onClose }) {
-  const [index, setIndex] = useState(0);
-
-  useEffect(() => { if (open) setIndex(0); }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
-  const step = TOUR_STEPS[index];
-  const stepLabel = index === 0 ? 'Welcome' : `Step ${index} of ${TOUR_STEPS.length - 1}`;
-
-  return createPortal(
-    <div className="help-tour" role="dialog" aria-modal="true" aria-label="Quick tour" onClick={onClose}>
-      <div className="help-tour-box" onClick={(e) => e.stopPropagation()}>
-        <div className="help-tour-dots">
-          {TOUR_STEPS.map((_, n) => <span key={n} className={n === index ? 'on' : ''} />)}
-        </div>
-        <div className="help-tag" style={{ marginTop: 12 }}>{stepLabel}</div>
-        <h2 style={{ margin: '4px 0 8px', fontSize: 20, color: '#1e293b' }}>{step.title}</h2>
-        <p style={{ margin: 0, color: '#374151', lineHeight: 1.5 }}>{step.body}</p>
-        <div className="help-tour-btns">
-          <button type="button" onClick={onClose}>Skip</button>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" onClick={() => setIndex((i) => Math.max(0, i - 1))} style={{ visibility: index === 0 ? 'hidden' : 'visible' }}>Back</button>
-            <button
-              type="button"
-              className="primary"
-              onClick={() => { if (index < TOUR_STEPS.length - 1) setIndex(index + 1); else onClose(); }}
-            >
-              {index === TOUR_STEPS.length - 1 ? 'Finish' : 'Next'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-}
-
 export default function HelpPage() {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(SECTIONS[0].id);
-  const [tourOpen, setTourOpen] = useState(false);
-  const startedRef = useRef(false);
 
   const q = query.trim().toLowerCase();
   const visible = useMemo(() => SECTIONS.map((s) => ({
@@ -321,18 +260,6 @@ export default function HelpPage() {
     hidden: q !== '' && !(s.keywords + ' ' + s.title).toLowerCase().includes(q),
   })), [q]);
   const anyVisible = visible.some((s) => !s.hidden);
-
-  useEffect(() => {
-    const seen = (() => { try { return localStorage.getItem('humsee_tour_done') === '1'; } catch (e) { return false; } })();
-    if (seen || startedRef.current) return;
-    startedRef.current = true;
-    setTimeout(() => setTourOpen(true), 700);
-  }, []);
-
-  const closeTour = () => {
-    setTourOpen(false);
-    try { localStorage.setItem('humsee_tour_done', '1'); } catch (e) { /* ignore */ }
-  };
 
   useEffect(() => {
     if (q !== '') return;
@@ -351,7 +278,13 @@ export default function HelpPage() {
           <h2>Help Center</h2>
           <div className="sub">Everything about Humsee Score — scoring, the scorecard, decisions and troubleshooting.</div>
         </div>
-        <button className="btn-primary" type="button" onClick={() => setTourOpen(true)}>▶ Start tour</button>
+        <button
+          className="btn-primary"
+          type="button"
+          onClick={() => window.dispatchEvent(new Event('humsee:start-tour'))}
+        >
+          ▶ Start tour
+        </button>
       </div>
 
       <div className="help-layout">
@@ -386,8 +319,6 @@ export default function HelpPage() {
           ))}
         </main>
       </div>
-
-      <QuickTour open={tourOpen} onClose={closeTour} />
     </div>
   );
 }
