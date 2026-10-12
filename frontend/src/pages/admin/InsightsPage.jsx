@@ -650,7 +650,7 @@ export default function InsightsPage() {
       ) : visible.length === 0 ? (
         <Empty description="No candidates found" />
       ) : (
-        <div className={`ir-grid${viewMode === 'list' ? ' list-mode' : ''}`}>
+        <div className={`ir-grid${viewMode === 'list' ? ' list-mode' : ''}`} data-tour="insights-grid">
           {visible.map(c => (
             <CandidateCard
               key={c.id}

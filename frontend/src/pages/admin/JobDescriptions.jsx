@@ -243,7 +243,7 @@ export default function JobDescriptions() {
 
   return (
     <Card>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div data-tour="jd-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}><FileTextOutlined /> Job Descriptions</Title>
         <Button type="primary" onClick={() => setOpen(true)}>+ Add JD</Button>
       </div>

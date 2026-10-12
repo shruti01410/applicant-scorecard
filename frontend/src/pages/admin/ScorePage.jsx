@@ -995,11 +995,11 @@ export default function ScorePage() {
             </div>
           )}
           items={[
-            { key: 'overview', label: 'Overview', children: overviewTab },
-            { key: 'capability', label: `Candidate Evaluation${capability && capability.pct != null ? ` (${capability.pct}%)` : ''}`, children: capabilityTab },
-            { key: 'parameters', label: `Score Parameters (${activeParams.length})`, children: parametersTab },
-            { key: 'deal', label: 'Joining Evaluation', children: dealTab },
-            { key: 'inner', label: 'Behavioral Reflection', children: <div className="ii-panel"><NumerologyTab key={id} employeeId={id} openReport={openInnerReport} /></div> },
+            { key: 'overview', label: <span data-tour="tab-overview">Overview</span>, children: overviewTab },
+            { key: 'capability', label: <span data-tour="tab-capability">{`Candidate Evaluation${capability && capability.pct != null ? ` (${capability.pct}%)` : ''}`}</span>, children: capabilityTab },
+            { key: 'parameters', label: <span data-tour="tab-parameters">{`Score Parameters (${activeParams.length})`}</span>, children: parametersTab },
+            { key: 'deal', label: <span data-tour="tab-deal">Joining Evaluation</span>, children: dealTab },
+            { key: 'inner', label: <span data-tour="tab-inner">Behavioral Reflection</span>, children: <div className="ii-panel"><NumerologyTab key={id} employeeId={id} openReport={openInnerReport} /></div> },
           ]}
         />
         {stickyBar}

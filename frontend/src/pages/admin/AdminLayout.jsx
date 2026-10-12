@@ -5,8 +5,25 @@ import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../services/AuthContext';
 import { api } from '../../services/api';
 import MfaPanel from '../../components/MfaPanel';
+import ProductTour from '../../components/ProductTour';
 
 const { Header, Content } = Layout;
+
+// End-to-end guided tour. Steps can span routes: `path` sends the tour to a
+// fixed route and `pathFrom` follows the href of a link (e.g. a candidate's
+// Edit Score link) so the tour can walk into a scorecard and its tabs.
+const TOUR_STEPS = [
+  { sel: '[data-tour="nav-scores"]', path: '/scores', title: 'Start on Scores', body: 'Scores is your candidate list. Every candidate you are evaluating lives here.' },
+  { sel: '[data-tour="add"]', path: '/scores', title: 'Add a candidate', body: 'Enter name, email and date of birth to add one person. Use Import from Excel to add many at once.' },
+  { sel: '[data-tour="jd-header"]', path: '/job-descriptions', title: 'Job Descriptions (JDs)', body: 'JDs are what candidates are scored against. Add a JD, edit its keywords, and identical JDs are detected and rejected automatically.' },
+  { sel: '[data-tour="insights-grid"]', path: '/insights', title: 'Insights', body: 'Insights compares candidates and shows Behavioural Reflection summaries side by side. Use Compare to view several at once.' },
+  { sel: '[data-tour="score"]', path: '/scores', title: 'Open the scorecard', body: 'Edit Score opens the candidate scorecard. It has five tabs — let us walk through each one.' },
+  { sel: '[data-tour="tab-overview"]', pathFrom: '[data-tour="score"]', title: 'Overview', body: 'Applicant details, the Pursuit Priority band, Candidate Fit and the Person/Role split at a glance.' },
+  { sel: '[data-tour="tab-capability"]', title: 'Candidate Evaluation', body: 'The JD ↔ resume evaluation, fed straight into Candidate Fit.' },
+  { sel: '[data-tour="tab-parameters"]', title: 'Score Parameters (16)', body: 'The 16 SOP parameters grouped as PERSON, ROLE and DEAL, weighted to 100%. Rate each 0–100 or mark it N/A.' },
+  { sel: '[data-tour="tab-deal"]', title: 'Joining Evaluation', body: 'DEAL factors (motivation, availability, compensation and joining risks) that drive Joining Probability.' },
+  { sel: '[data-tour="tab-inner"]', title: 'Behavioural Reflection', body: 'Admin-only and informational. It is never used in Candidate Fit or Joining Probability.' },
+];
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
@@ -125,7 +142,7 @@ export default function AdminLayout() {
           <div className="nav-links" style={{ flex:1, justifyContent:'center' }}>
             <Link to="/" className="nav-link">Home</Link>
             <Link to="/scores" className="nav-link" data-tour="nav-scores">Scores</Link>
-            <Link to="/job-descriptions" className="nav-link">JDs</Link>
+            <Link to="/job-descriptions" className="nav-link" data-tour="nav-jd">JDs</Link>
             <Link to="/decision-center" className="nav-link">Decisions</Link>
             <Link to="/insights" className="nav-link" data-tour="nav-insights">Insights</Link>
             <Link to="/help" className="nav-link">Help</Link>
@@ -142,6 +159,7 @@ export default function AdminLayout() {
       <Content className={fullBleed ? 'page-full' : 'page'} style={fullBleed ? { paddingTop: 0 } : { paddingTop: 24 }}>
         <Outlet />
       </Content>
+      <ProductTour steps={TOUR_STEPS} storageKey="humsee_scores_tour_done" />
     </Layout>
   );
 }

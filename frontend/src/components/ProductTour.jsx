@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import './ProductTour.css';
 
 const PAD = 6;
@@ -27,6 +28,22 @@ export default function ProductTour({
   const [cardH, setCardH] = useState(190);
   const cardRef = useRef(null);
   const startedRef = useRef(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Resolve the route a step should be shown on. `path` is static; `pathFrom`
+  // reads the href of a link containing the given selector (e.g. a row's
+  // "Edit Score" link) so the tour can follow the user into a scorecard.
+  const resolveTarget = useCallback((step) => {
+    if (!step) return null;
+    if (typeof step.path === 'string') return step.path;
+    if (step.pathFrom) {
+      const src = document.querySelector(step.pathFrom);
+      const a = src ? (src.closest('a') || (src.tagName === 'A' ? src : null)) : null;
+      return a ? a.getAttribute('href') : null;
+    }
+    return null;
+  }, []);
 
   const measure = useCallback(() => {
     const step = steps[index];
@@ -60,15 +77,38 @@ export default function ProductTour({
     setTimeout(start, 700);
   }, [autoStart, steps.length, storageKey, start]);
 
-  // Bring the current target into view, then re-measure once it settles.
+  // Follow the tour across pages: if a step belongs on another route, navigate
+  // there first, then let the measuring effect below wait for its anchor.
+  useEffect(() => {
+    if (!active) return;
+    const target = resolveTarget(steps[index]);
+    if (target && location.pathname !== target) {
+      setBox(null);
+      navigate(target);
+    }
+  }, [active, index, steps, resolveTarget, navigate, location.pathname]);
+
+  // Bring the current target into view, retrying until it renders (it may be on
+  // a page that is still loading), then re-measure once it settles.
   useLayoutEffect(() => {
     if (!active) return;
-    const step = steps[index];
-    const el = step ? document.querySelector(step.sel) : null;
-    if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center', inline: 'nearest' });
-    const raf = requestAnimationFrame(measure);
-    return () => cancelAnimationFrame(raf);
-  }, [active, index, steps, measure]);
+    let cancelled = false;
+    let tries = 0;
+    const tick = () => {
+      if (cancelled) return;
+      const step = steps[index];
+      const el = step ? document.querySelector(step.sel) : null;
+      if (el) {
+        if (el.scrollIntoView) el.scrollIntoView({ block: 'center', inline: 'nearest' });
+        measure();
+        return;
+      }
+      if (tries++ < 40) setTimeout(tick, 100);
+      else setBox(null);
+    };
+    const raf = requestAnimationFrame(tick);
+    return () => { cancelled = true; cancelAnimationFrame(raf); };
+  }, [active, index, steps, measure, location.pathname]);
 
   // Keep the spotlight aligned while the page scrolls or resizes.
   useEffect(() => {

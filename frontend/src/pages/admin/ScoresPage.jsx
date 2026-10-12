@@ -14,18 +14,9 @@ import ResumeIntegrity from '../../components/ResumeIntegrity';
 import CompareCandidates from '../../components/CompareCandidates';
 import FilterPanel from '../../components/FilterPanel';
 import SortFilterDrawer from '../../components/SortFilterDrawer';
-import ProductTour from '../../components/ProductTour';
 import HelpTip from '../../components/HelpTip';
 
 const { Title } = Typography;
-
-const TOUR_STEPS = [
-  { sel: '[data-tour="nav-scores"]', title: 'Start on Scores', body: 'Scores is your candidate list. Every candidate you are evaluating lives here.' },
-  { sel: '[data-tour="add"]', title: 'Add a candidate', body: 'Enter name, email and date of birth to add one person. Use Import from Excel to add many at once.' },
-  { sel: '[data-tour="score"]', title: 'Open the scorecard', body: 'Edit Score opens the 16-parameter scorecard. Rate each parameter 0–100 or mark it N/A, then save.' },
-  { sel: '[data-tour="priority"]', title: 'Read the decision', body: 'The Pursuit Priority shows the routing band. Gates explain any cap on the band.' },
-  { sel: '[data-tour="nav-insights"]', title: 'Insights (optional)', body: 'Behavioural Reflection is admin-only and informational. It never changes the score.' },
-];
 
 function PursuitCol({ row }) {
   const d = row.pursuit_priority || {};
@@ -301,7 +292,6 @@ export default function ScoresPage() {
 
   return (
     <div>
-      <ProductTour steps={TOUR_STEPS} storageKey="humsee_scores_tour_done" />
       <div className="page-header" style={{ marginBottom:16 }}>
         <div>
           <h2 style={{ margin:0, fontSize:18, fontWeight:700, color:'#1e293b' }}>Employee Scorecards</h2>
