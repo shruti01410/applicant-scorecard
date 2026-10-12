@@ -3,11 +3,17 @@ import { createPortal } from 'react-dom';
 import '../../styles/help.css';
 
 const TOUR_STEPS = [
-  { tag: 'Welcome', title: 'Welcome to Humsee Score', body: 'This short tour shows you where things are. You can reopen it any time from the blue button at the top.' },
-  { tag: 'Step 1 of 4', title: 'Scores: your candidate list', body: 'Every candidate lives here. Search, filter, or add one with + Add Candidate. Click Score Now to open a scorecard.' },
-  { tag: 'Step 2 of 4', title: 'The scorecard', body: 'Rate the 16 parameters from 0 to 100 (or N/A). Fill in Joining Evaluation, then select Save Scorecard & Recompute Pursuit.' },
-  { tag: 'Step 3 of 4', title: 'Read the decision', body: 'The Pursuit Priority card shows the routing band and any gate warnings. Gates explain why a band was capped.' },
-  { tag: 'Step 4 of 4', title: 'Decisions and help', body: 'Approvals and email drafts are in Decisions. Use the Help Center on this page for any feature you forget. Happy scoring!' },
+  { title: 'Welcome to Humsee Score', body: 'This short tour shows you where things are. You can reopen it any time from the blue Start tour button at the top.' },
+  { title: 'Scores: your candidate list', body: 'Every candidate lives here. Search, filter, or add one with + Add Candidate. Click Score Now to open a scorecard.' },
+  { title: 'The scorecard', body: 'Each scorecard has tabs: Overview, Candidate Evaluation, Score Parameters (16), Joining Evaluation and Behavioural Reflection. Let us walk through them.' },
+  { title: 'Overview', body: 'Overview summarises the candidate: applicant details, the Pursuit Priority band, Candidate Fit and the Person/Role split at a glance.' },
+  { title: 'Candidate Evaluation', body: 'Candidate Evaluation holds the 16 SOP parameters (PERSON, ROLE, DEAL) with the linked JD and resume scoring. Rate each 0-100 or mark it N/A, then auto-rate from JD + resume if you like.' },
+  { title: 'Joining Evaluation', body: 'Joining Evaluation captures the DEAL factors (motivation, availability, compensation and joining risks) that drive Joining Probability.' },
+  { title: 'Behavioural Reflection', body: 'Behavioural Reflection is an admin-only, informational view based on date of birth. It is never used in Candidate Fit or Joining Probability.' },
+  { title: 'Read the decision', body: 'The Pursuit Priority card shows the routing band and any gate warnings. Gates explain why a band was capped.' },
+  { title: 'Job Descriptions (JDs)', body: 'JDs are what candidates are scored against. Add a JD, edit its keywords, and identical JDs are detected and rejected automatically.' },
+  { title: 'Insights', body: 'Insights compares candidates and shows reflection summaries side by side. Use Compare to view several candidates at once.' },
+  { title: 'Decisions and help', body: 'Approvals and email drafts are in Decisions. Use this Help Center any time for any feature you forget. Happy scoring!' },
 ];
 
 const SECTIONS = [
@@ -273,6 +279,7 @@ function QuickTour({ open, onClose }) {
 
   if (!open) return null;
   const step = TOUR_STEPS[index];
+  const stepLabel = index === 0 ? 'Welcome' : `Step ${index} of ${TOUR_STEPS.length - 1}`;
 
   return createPortal(
     <div className="help-tour" role="dialog" aria-modal="true" aria-label="Quick tour" onClick={onClose}>
@@ -280,7 +287,7 @@ function QuickTour({ open, onClose }) {
         <div className="help-tour-dots">
           {TOUR_STEPS.map((_, n) => <span key={n} className={n === index ? 'on' : ''} />)}
         </div>
-        <div className="help-tag" style={{ marginTop: 12 }}>{step.tag}</div>
+        <div className="help-tag" style={{ marginTop: 12 }}>{stepLabel}</div>
         <h2 style={{ margin: '4px 0 8px', fontSize: 20, color: '#1e293b' }}>{step.title}</h2>
         <p style={{ margin: 0, color: '#374151', lineHeight: 1.5 }}>{step.body}</p>
         <div className="help-tour-btns">
