@@ -14,7 +14,6 @@ import ResumeIntegrity from '../../components/ResumeIntegrity';
 import CompareCandidates from '../../components/CompareCandidates';
 import FilterPanel from '../../components/FilterPanel';
 import SortFilterDrawer from '../../components/SortFilterDrawer';
-import HelpTip from '../../components/HelpTip';
 
 const { Title } = Typography;
 
@@ -32,7 +31,6 @@ function PursuitCol({ row }) {
       </span>
       <div style={{ marginTop:4, display:'inline-flex', alignItems:'center' }}>
         <Tag color={tagColor} style={{ fontSize:10, fontWeight:700, margin:0 }}>{d.final_decision}</Tag>
-        <HelpTip title="Candidate Fit" body="PERSON × 35% + ROLE × 40% + JD match × 25%. Missing parts are dropped and the rest are re-weighted." />
       </div>
       <EvidenceDetailsPopover
         label="Score Breakdown — P · R · F · J · Confidence"
@@ -336,7 +334,7 @@ export default function ScoresPage() {
               <th style={{ cursor:'pointer', userSelect:'none' }} onClick={()=>toggleSort('applicant_name')}>EMPLOYEE{sortIcon('applicant_name')}</th>
               <th style={{ cursor:'pointer', userSelect:'none' }} onClick={()=>toggleSort('client')}>CLIENT{sortIcon('client')}</th>
               <th style={{ cursor:'pointer', userSelect:'none' }} onClick={()=>toggleSort('position')}>POSITION{sortIcon('position')}</th>
-              <th data-tour="priority" style={{ cursor:'pointer', userSelect:'none' }} onClick={()=>toggleSort('weighted_pct')}>PURSUIT PRIORITY<HelpTip title="Pursuit Priority" body="Fit × 60% + Joining Probability × 40%, then gates. The band is Priority Interview (80+), Interview (65–79), Verify (50–64) or Hold (below 50)." />{sortIcon('weighted_pct')}</th>
+              <th data-tour="priority" style={{ cursor:'pointer', userSelect:'none' }} onClick={()=>toggleSort('weighted_pct')}>PURSUIT PRIORITY{sortIcon('weighted_pct')}</th>
               <th style={{ width:110 }}>ACTION</th>
             </tr>
           </thead>
